@@ -20,8 +20,6 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Database } from '@/integrations/supabase/database.types';
 
@@ -562,10 +560,10 @@ export default function Purchases() {
       const userId = sessionData?.session?.user?.id;
       if (!userId) throw new Error('Sessão expirada. Faça login novamente.');
 
-      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', userId).single();
+      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', userId).single() as { data: { company_id: string } | null; error: unknown };
       if (!profile?.company_id) throw new Error('Perfil ou empresa não encontrados.');
 
-      const { data: company } = await supabase.from('companies').select('gemini_api_key').eq('id', profile.company_id).single();
+      const { data: company } = await supabase.from('companies').select('gemini_api_key').eq('id', profile.company_id).single() as { data: { gemini_api_key: string | null } | null; error: unknown };
       if (!company?.gemini_api_key) throw new Error('Chave da API Gemini não configurada. Acesse Configurações > Inteligência Artificial e adicione sua chave.');
 
       // Initialize Gemini SDK with gemini-1.5-flash which is standard, fast, and stable

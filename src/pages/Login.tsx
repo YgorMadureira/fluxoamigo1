@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,14 +9,17 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Lock, Mail, Loader2, BarChart3, Package, ShoppingCart, AlertTriangle } from 'lucide-react';
 import logo from '@/assets/logo-osdevs.jpeg';
+import LoginTransition from '@/components/LoginTransition';
 
 export default function Login() {
   const { user, profile, loading } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [unauthorized, setUnauthorized] = useState(false);
+  const [showTransition, setShowTransition] = useState(false);
 
   // Authenticated + has profile → go to dashboard
   if (!loading && user && profile) return <Navigate to="/" replace />;
@@ -45,6 +48,7 @@ export default function Login() {
           setUnauthorized(true);
         } else {
           toast({ title: 'Bem-vindo!', description: 'Login realizado com sucesso.' });
+          setShowTransition(true);
         }
       }
     } catch (err: unknown) {
@@ -61,7 +65,9 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <>
+      <LoginTransition show={showTransition} onComplete={() => navigate('/', { replace: true })} />
+      <div className="min-h-screen flex">
       {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden flex-col justify-between p-12">
         <div className="absolute inset-0 overflow-hidden">
@@ -223,6 +229,7 @@ export default function Login() {
           )}
         </motion.div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

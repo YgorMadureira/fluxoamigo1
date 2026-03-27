@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import logo from '@/assets/logo-osdevs.jpeg';
 
@@ -151,13 +152,15 @@ export default function LoginTransition({ show, onComplete }: LoginTransitionPro
 }
 
 function HiddenTimer({ duration, onDone }: { duration: number; onDone: () => void }) {
-  // Fire callback after duration
-  const ref = { current: false };
-  setTimeout(() => {
-    if (!ref.current) {
-      ref.current = true;
-      onDone();
-    }
-  }, duration);
+  const fired = useRef(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!fired.current) {
+        fired.current = true;
+        onDone();
+      }
+    }, duration);
+    return () => clearTimeout(t);
+  }, [duration, onDone]);
   return null;
 }

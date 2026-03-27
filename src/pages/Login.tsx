@@ -229,6 +229,7 @@ export default function Login() {
           )}
         </motion.div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

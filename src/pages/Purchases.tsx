@@ -20,8 +20,6 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Database } from '@/integrations/supabase/database.types';
 

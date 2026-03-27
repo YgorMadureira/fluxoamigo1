@@ -21,8 +21,8 @@ export default function Login() {
   const [unauthorized, setUnauthorized] = useState(false);
   const [showTransition, setShowTransition] = useState(false);
 
-  // Authenticated + has profile → go to dashboard
-  if (!loading && user && profile) return <Navigate to="/" replace />;
+  // Authenticated + has profile → go to dashboard (but not during transition)
+  if (!loading && user && profile && !showTransition) return <Navigate to="/" replace />;
 
   // Authenticated but no profile → show unauthorized
   const showUnauthorized = !loading && user && !profile;

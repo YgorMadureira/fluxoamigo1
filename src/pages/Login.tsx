@@ -48,6 +48,7 @@ export default function Login() {
           setUnauthorized(true);
         } else {
           toast({ title: 'Bem-vindo!', description: 'Login realizado com sucesso.' });
+          setShowTransition(true);
         }
       }
     } catch (err: unknown) {
@@ -64,7 +65,9 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <>
+      <LoginTransition show={showTransition} onComplete={() => navigate('/', { replace: true })} />
+      <div className="min-h-screen flex">
       {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-sidebar relative overflow-hidden flex-col justify-between p-12">
         <div className="absolute inset-0 overflow-hidden">

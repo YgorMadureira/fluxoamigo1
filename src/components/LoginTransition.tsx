@@ -17,13 +17,13 @@ const bubbles = Array.from({ length: 20 }, (_, i) => ({
   floatY: -(15 + Math.random() * 40),
 }));
 
-// Thin vertical lines
-const verticalLines = Array.from({ length: 18 }, (_, i) => ({
+// Thin horizontal lines
+const horizontalLines = Array.from({ length: 18 }, (_, i) => ({
   id: i,
-  x: 5 + (i / 17) * 90,
+  y: 5 + (i / 17) * 90,
   delay: 0.1 + Math.random() * 0.8,
   opacity: 0.06 + Math.random() * 0.12,
-  width: 1 + Math.random() * 0.5,
+  height: 1 + Math.random() * 0.5,
 }));
 
 export default function LoginTransition({ show, onComplete }: LoginTransitionProps) {
@@ -41,19 +41,19 @@ export default function LoginTransition({ show, onComplete }: LoginTransitionPro
           }}
           style={{ background: 'radial-gradient(ellipse at center, hsl(220 25% 12%), hsl(220 30% 6%))' }}
         >
-          {/* Thin vertical lines */}
-          {verticalLines.map((line) => (
+          {/* Thin horizontal lines */}
+          {horizontalLines.map((line) => (
             <motion.div
-              key={`vline-${line.id}`}
-              className="absolute inset-y-0"
-              initial={{ opacity: 0, scaleY: 0 }}
-              animate={{ opacity: line.opacity, scaleY: 1 }}
+              key={`hline-${line.id}`}
+              className="absolute inset-x-0"
+              initial={{ opacity: 0, scaleX: 0 }}
+              animate={{ opacity: line.opacity, scaleX: 1 }}
               transition={{ duration: 1.2, delay: line.delay, ease: 'easeOut' }}
               style={{
-                left: `${line.x}%`,
-                width: line.width,
-                background: `linear-gradient(180deg, transparent 0%, rgba(140,200,255,0.3) 30%, rgba(140,200,255,0.15) 70%, transparent 100%)`,
-                transformOrigin: 'top',
+                top: `${line.y}%`,
+                height: line.height,
+                background: `linear-gradient(90deg, transparent 0%, rgba(140,200,255,0.3) 30%, rgba(140,200,255,0.15) 70%, transparent 100%)`,
+                transformOrigin: 'left',
               }}
             />
           ))}

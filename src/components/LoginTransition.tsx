@@ -7,7 +7,7 @@ interface LoginTransitionProps {
   onComplete: () => void;
 }
 
-const bubbles = Array.from({ length: 20 }, (_, i) => ({
+const bubbles = Array.from({ length: 40 }, (_, i) => ({
   id: i,
   x: Math.random() * 100,
   y: Math.random() * 100,

@@ -1151,16 +1151,6 @@ REGRAS:
                   <Label>Data *</Label>
                   <Input type="date" value={multiDate} onChange={e => setMultiDate(e.target.value)} required />
                 </div>
-                <div className="space-y-1">
-                  <Label>Tipo</Label>
-                  <Select value={multiCategory} onValueChange={setMultiCategory}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="product">Produto / Mercadoria</SelectItem>
-                      <SelectItem value="expense">Despesa Operacional</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="col-span-2 space-y-1">
                   <div className="flex items-center justify-between">
                     <Label>Fornecedor</Label>

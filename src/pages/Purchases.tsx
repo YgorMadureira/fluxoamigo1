@@ -1382,16 +1382,6 @@ REGRAS:
                     onCreateNew={name => { setNewSupplierName(name); setSupplierModalOpen(true); }}
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label>Tipo</Label>
-                  <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="product">Produto / Mercadoria</SelectItem>
-                      <SelectItem value="expense">Despesa Operacional</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="col-span-2 space-y-1">
                   <Label>Observações / Justificativa</Label>
                   <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Ex: Reposição de estoque, promoção, ajuste de preço..." className="min-h-[60px] text-sm" />

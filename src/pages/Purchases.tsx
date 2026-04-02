@@ -797,8 +797,8 @@ REGRAS:
           {[
             { label: 'Total Lançamentos', value: filtered.length.toString(), color: 'text-foreground' },
             { label: 'Custo Total', value: formatBRL(totalCost), color: 'text-danger' },
-            { label: 'Produtos', value: filtered.filter(p => p.category === 'product').length.toString(), color: 'text-primary' },
-            { label: 'Despesas', value: filtered.filter(p => p.category === 'expense').length.toString(), color: 'text-warning' },
+            { label: 'Com Fornecedor', value: filtered.filter(p => p.supplier).length.toString(), color: 'text-primary' },
+            { label: 'Sem Fornecedor', value: filtered.filter(p => !p.supplier).length.toString(), color: 'text-warning' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-card border border-border rounded-xl p-4 shadow-card">
               <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">{label}</p>

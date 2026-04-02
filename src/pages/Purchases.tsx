@@ -411,7 +411,9 @@ export default function Purchases() {
   };
 
   const openNewProductModal = async () => {
-    setNewProductForm({ ...emptyNewProductForm });
+    // Pre-fill cost_price from current form's unit_cost
+    const currentCost = form.unit_cost || '';
+    setNewProductForm({ ...emptyNewProductForm, cost_price: currentCost });
     setNewProductModalOpen(true);
     if (profile?.company_id) {
       setGeneratingSku(true);

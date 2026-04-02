@@ -411,7 +411,9 @@ export default function Purchases() {
   };
 
   const openNewProductModal = async () => {
-    setNewProductForm({ ...emptyNewProductForm });
+    // Pre-fill cost_price from current form's unit_cost
+    const currentCost = form.unit_cost || '';
+    setNewProductForm({ ...emptyNewProductForm, cost_price: currentCost });
     setNewProductModalOpen(true);
     if (profile?.company_id) {
       setGeneratingSku(true);
@@ -795,8 +797,8 @@ REGRAS:
           {[
             { label: 'Total Lançamentos', value: filtered.length.toString(), color: 'text-foreground' },
             { label: 'Custo Total', value: formatBRL(totalCost), color: 'text-danger' },
-            { label: 'Produtos', value: filtered.filter(p => p.category === 'product').length.toString(), color: 'text-primary' },
-            { label: 'Despesas', value: filtered.filter(p => p.category === 'expense').length.toString(), color: 'text-warning' },
+            { label: 'Com Fornecedor', value: filtered.filter(p => p.supplier).length.toString(), color: 'text-primary' },
+            { label: 'Sem Fornecedor', value: filtered.filter(p => !p.supplier).length.toString(), color: 'text-warning' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-card border border-border rounded-xl p-4 shadow-card">
               <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">{label}</p>
@@ -1151,16 +1153,6 @@ REGRAS:
                   <Label>Data *</Label>
                   <Input type="date" value={multiDate} onChange={e => setMultiDate(e.target.value)} required />
                 </div>
-                <div className="space-y-1">
-                  <Label>Tipo</Label>
-                  <Select value={multiCategory} onValueChange={setMultiCategory}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="product">Produto / Mercadoria</SelectItem>
-                      <SelectItem value="expense">Despesa Operacional</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="col-span-2 space-y-1">
                   <div className="flex items-center justify-between">
                     <Label>Fornecedor</Label>
@@ -1391,16 +1383,6 @@ REGRAS:
                     suppliers={suppliers}
                     onCreateNew={name => { setNewSupplierName(name); setSupplierModalOpen(true); }}
                   />
-                </div>
-                <div className="space-y-1">
-                  <Label>Tipo</Label>
-                  <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="product">Produto / Mercadoria</SelectItem>
-                      <SelectItem value="expense">Despesa Operacional</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div className="col-span-2 space-y-1">
                   <Label>Observações / Justificativa</Label>

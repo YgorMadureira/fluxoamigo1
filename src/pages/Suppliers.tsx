@@ -292,12 +292,22 @@ export default function Suppliers() {
                 <Label htmlFor="sup-phone">Telefone / WhatsApp</Label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <Input
+                <Input
                     id="sup-phone"
                     value={form.phone}
-                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    placeholder="(11) 99999-9999"
+                    onChange={e => {
+                      // Only allow digits, apply mask (xx)xxxxx-xxxx
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                      let masked = '';
+                      if (digits.length > 0) masked += '(' + digits.slice(0, 2);
+                      if (digits.length >= 2) masked += ')';
+                      if (digits.length > 2) masked += digits.slice(2, 7);
+                      if (digits.length > 7) masked += '-' + digits.slice(7, 11);
+                      setForm(f => ({ ...f, phone: masked }));
+                    }}
+                    placeholder="(11)99999-9999"
                     className="pl-8"
+                    inputMode="numeric"
                   />
                 </div>
               </div>

@@ -114,6 +114,16 @@ export default function Products() {
     if (!form.name.trim()) return;
     setSubmitting(true);
 
+    // Validate SKU uniqueness
+    if (form.sku) {
+      const duplicate = products.find(p => p.sku === form.sku && p.id !== editingId);
+      if (duplicate) {
+        toast({ title: 'SKU já existe', description: `O SKU "${form.sku}" já está sendo usado pelo produto "${duplicate.name}".`, variant: 'destructive' });
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
       sku: form.sku || null,

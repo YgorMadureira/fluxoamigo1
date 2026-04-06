@@ -214,9 +214,6 @@ export default function Dashboard() {
             <p className={`text-3xl font-display font-bold ${totalProductProfit >= 0 ? 'text-success' : 'text-danger'}`}>
               {loading ? '...' : formatBRL(totalProductProfit)}
             </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {formatBRL(salesTotal)} em vendas − {formatBRL(totalProductCost)} em custo dos produtos
-            </p>
           </div>
           <div className="text-right shrink-0">
             <div className={`text-2xl font-display font-bold ${totalProductProfit >= 0 ? 'text-success' : 'text-danger'}`}>

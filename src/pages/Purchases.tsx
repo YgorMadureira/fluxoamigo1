@@ -238,6 +238,10 @@ export default function Purchases() {
   // Supplier modal
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState('');
+  const [newSupplierContact, setNewSupplierContact] = useState('');
+  const [newSupplierPhone, setNewSupplierPhone] = useState('');
+  const [newSupplierEmail, setNewSupplierEmail] = useState('');
+  const [newSupplierNotes, setNewSupplierNotes] = useState('');
   const [supplierSubmitting, setSupplierSubmitting] = useState(false);
 
 // ===== OCR SCANNER STATE =====
@@ -510,7 +514,13 @@ export default function Purchases() {
     if (!name) return null;
     setSupplierSubmitting(true);
     const result = await (supabase.from('suppliers' as never) as unknown as { insert: (v: object) => { select: (s: string) => { single: () => Promise<{ data: Supplier | null; error: { message: string } | null }> } } })
-      .insert({ company_id: profile?.company_id ?? '', name })
+      .insert({
+        company_id: profile?.company_id ?? '', name,
+        contact: newSupplierContact.trim() || null,
+        phone: newSupplierPhone.trim() || null,
+        email: newSupplierEmail.trim() || null,
+        notes: newSupplierNotes.trim() || null,
+      })
       .select('id, name, phone, email')
       .single();
     const { data, error } = result;
@@ -521,6 +531,10 @@ export default function Purchases() {
     }
     setSupplierModalOpen(false);
     setNewSupplierName('');
+    setNewSupplierContact('');
+    setNewSupplierPhone('');
+    setNewSupplierEmail('');
+    setNewSupplierNotes('');
     setSupplierSubmitting(false);
     return data;
   };
@@ -1531,15 +1545,45 @@ REGRAS:
 
       {/* ===== SUPPLIER MODAL ===== */}
       <Dialog open={supplierModalOpen} onOpenChange={setSupplierModalOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display flex items-center gap-2"><UserPlus className="w-5 h-5 text-primary" /> Cadastrar Fornecedor</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Nome do Fornecedor *</Label>
-              <Input value={newSupplierName} onChange={e => setNewSupplierName(e.target.value)} placeholder="Ex: Distribuidora XYZ" autoFocus
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateSupplier(); } }} />
+              <Label>Razão Social / Nome *</Label>
+              <Input value={newSupplierName} onChange={e => setNewSupplierName(e.target.value)} placeholder="Ex: Distribuidora XYZ" autoFocus />
+            </div>
+            <div className="space-y-1">
+              <Label>Nome do Contato</Label>
+              <Input value={newSupplierContact} onChange={e => setNewSupplierContact(e.target.value)} placeholder="Ex: João Silva" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Telefone / WhatsApp</Label>
+                <Input
+                  value={newSupplierPhone}
+                  onChange={e => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+                    let masked = '';
+                    if (digits.length > 0) masked += '(' + digits.slice(0, 2);
+                    if (digits.length >= 2) masked += ')';
+                    if (digits.length > 2) masked += digits.slice(2, 7);
+                    if (digits.length > 7) masked += '-' + digits.slice(7, 11);
+                    setNewSupplierPhone(masked);
+                  }}
+                  placeholder="(11)99999-9999"
+                  inputMode="numeric"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>E-mail</Label>
+                <Input type="email" value={newSupplierEmail} onChange={e => setNewSupplierEmail(e.target.value)} placeholder="contato@empresa.com" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Observações</Label>
+              <Input value={newSupplierNotes} onChange={e => setNewSupplierNotes(e.target.value)} placeholder="Prazo, condições, etc." />
             </div>
           </div>
           <DialogFooter>

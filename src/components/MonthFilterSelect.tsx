@@ -1,26 +1,51 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useMonthFilter } from '@/hooks/useMonthFilter';
-import { startOfMonth, subMonths, format } from 'date-fns';
+import { startOfMonth, format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CalendarDays } from 'lucide-react';
-
-/** Generates a list of the last 24 months + 2 future months from today */
-function generateMonthOptions() {
-  const today = new Date();
-  const months: { value: string; label: string; date: Date }[] = [];
-  for (let i = -2; i <= 24; i++) {
-    const d = startOfMonth(subMonths(today, i));
-    const value = format(d, 'yyyy-MM');
-    const label = format(d, "MMMM 'de' yyyy", { locale: ptBR });
-    months.push({ value, date: d, label: label.charAt(0).toUpperCase() + label.slice(1) });
-  }
-  return months;
-}
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function MonthFilterSelect() {
   const { selectedMonth, setSelectedMonth } = useMonthFilter();
-  const options = useMemo(() => generateMonthOptions(), []);
+  const { profile } = useAuth();
+  const [availableMonths, setAvailableMonths] = useState<{ value: string; label: string; date: Date }[]>([]);
+
+  useEffect(() => {
+    if (!profile?.company_id) return;
+    const cid = profile.company_id;
+
+    async function fetchMonths() {
+      const [salesRes, purchasesRes] = await Promise.all([
+        supabase.from('sales').select('sale_date').eq('company_id', cid),
+        supabase.from('purchases').select('purchase_date').eq('company_id', cid),
+      ]);
+
+      const monthSet = new Set<string>();
+      // Always include current month
+      monthSet.add(format(new Date(), 'yyyy-MM'));
+
+      (salesRes.data ?? []).forEach((s: { sale_date: string }) => {
+        if (s.sale_date) monthSet.add(s.sale_date.slice(0, 7));
+      });
+      (purchasesRes.data ?? []).forEach((p: { purchase_date: string }) => {
+        if (p.purchase_date) monthSet.add(p.purchase_date.slice(0, 7));
+      });
+
+      const months = Array.from(monthSet)
+        .sort((a, b) => b.localeCompare(a))
+        .map(val => {
+          const d = startOfMonth(parseISO(val + '-01'));
+          const label = format(d, "MMMM 'de' yyyy", { locale: ptBR });
+          return { value: val, date: d, label: label.charAt(0).toUpperCase() + label.slice(1) };
+        });
+
+      setAvailableMonths(months);
+    }
+    fetchMonths();
+  }, [profile]);
+
   const currentValue = format(selectedMonth, 'yyyy-MM');
 
   return (
@@ -29,7 +54,7 @@ export default function MonthFilterSelect() {
       <Select
         value={currentValue}
         onValueChange={val => {
-          const found = options.find(o => o.value === val);
+          const found = availableMonths.find(o => o.value === val);
           if (found) setSelectedMonth(found.date);
         }}
       >
@@ -37,7 +62,7 @@ export default function MonthFilterSelect() {
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="max-h-72">
-          {options.map(o => (
+          {availableMonths.map(o => (
             <SelectItem key={o.value} value={o.value} className="text-sm">
               {o.label}
             </SelectItem>

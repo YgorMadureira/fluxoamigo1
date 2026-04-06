@@ -8,12 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
-  Plus, Pencil, Trash2, Search, RefreshCw, Package, Loader2,
-  AlertTriangle, CheckCircle, History, Tag, Wand2
+  Search, RefreshCw, Package, Loader2,
+  AlertTriangle, CheckCircle, History, Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Database } from '@/integrations/supabase/database.types';
@@ -24,33 +23,6 @@ interface Category { id: string; name: string; }
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-const emptyProductForm = {
-  name: '',
-  sku: '',
-  unit_price: '',
-  cost_price: '',
-  stock_quantity: 0,
-  min_stock: 5,
-  category: '',
-  category_id: '',
-};
-
-async function generateSku(companyId: string): Promise<string> {
-  const { data } = await supabase
-    .from('products')
-    .select('sku')
-    .eq('company_id', companyId)
-    .not('sku', 'is', null);
-
-  const nums = (data ?? [])
-    .map(p => parseInt(p.sku ?? '', 10))
-    .filter(n => !isNaN(n));
-
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-  const digits = Math.max(3, String(next).length);
-  return String(next).padStart(digits, '0');
-}
-
 export default function Inventory() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
@@ -59,16 +31,11 @@ export default function Inventory() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [productDialog, setProductDialog] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ ...emptyProductForm });
-  const [submitting, setSubmitting] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [adjustDialog, setAdjustDialog] = useState(false);
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [adjustQty, setAdjustQty] = useState('');
   const [justification, setJustification] = useState('');
-  const [generatingSku, setGeneratingSku] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!profile?.company_id) return;
@@ -85,85 +52,6 @@ export default function Inventory() {
   }, [toast, profile]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handleGenerateSku = async () => {
-    if (!profile?.company_id) return;
-    setGeneratingSku(true);
-    const sku = await generateSku(profile.company_id);
-    setForm(f => ({ ...f, sku }));
-    setGeneratingSku(false);
-  };
-
-  const openNew = async () => {
-    setForm({ ...emptyProductForm });
-    setEditingId(null);
-    setProductDialog(true);
-    // auto-generate SKU for new product
-    if (profile?.company_id) {
-      const sku = await generateSku(profile.company_id);
-      setForm(f => ({ ...f, sku }));
-    }
-  };
-
-  const openEdit = (p: Product) => {
-    setForm({
-      name: p.name,
-      sku: p.sku ?? '',
-      unit_price: String(p.unit_price),
-      cost_price: String(p.cost_price),
-      stock_quantity: p.stock_quantity,
-      min_stock: p.min_stock ?? 5,
-      category: p.category ?? '',
-      category_id: p.category_id ?? '',
-    });
-    setEditingId(p.id);
-    setProductDialog(true);
-  };
-
-  const handleProductSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    const payload = {
-      name: form.name,
-      sku: form.sku || null,
-      unit_price: parseFloat(form.unit_price) || 0,
-      cost_price: parseFloat(form.cost_price) || 0,
-      stock_quantity: Number(form.stock_quantity),
-      min_stock: Number(form.min_stock) || 5,
-      category: form.category || null,
-      category_id: form.category_id || null,
-      company_id: profile?.company_id ?? '',
-      updated_at: new Date().toISOString(),
-    };
-
-    let error: { message: string } | null = null;
-    if (editingId) {
-      const res = await supabase.from('products').update(payload as never).eq('id', editingId);
-      error = res.error as { message: string } | null;
-    } else {
-      const res = await supabase.from('products').insert(payload as never);
-      error = res.error as { message: string } | null;
-    }
-
-    if (error) {
-      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
-    } else {
-      toast({ title: editingId ? 'Produto atualizado!' : 'Produto cadastrado!' });
-      setProductDialog(false);
-      fetchData();
-    }
-    setSubmitting(false);
-  };
-
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (error) toast({ title: 'Erro ao excluir', variant: 'destructive' });
-    else {
-      toast({ title: 'Produto excluído!' });
-      setProducts(prev => prev.filter(p => p.id !== id));
-    }
-    setDeleteId(null);
-  };
 
   const openAdjust = (p: Product) => {
     setAdjustProduct(p);
@@ -241,9 +129,6 @@ export default function Inventory() {
               <Tag className="w-4 h-4" /> Categorias
             </Button>
             <Button onClick={fetchData} variant="outline" size="sm"><RefreshCw className="w-4 h-4" /></Button>
-            <Button onClick={openNew} size="sm" className="gap-2 gradient-primary text-primary-foreground shadow-primary">
-              <Plus className="w-4 h-4" /> Novo Produto
-            </Button>
           </div>
         </div>
 
@@ -340,12 +225,6 @@ export default function Inventory() {
                             <Button size="sm" variant="ghost" onClick={() => openAdjust(p)} className="h-7 px-2 text-xs hover:bg-warning/10 hover:text-warning gap-1">
                               <Package className="w-3 h-3" /> Ajustar
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setDeleteId(p.id)} className="h-7 w-7 p-0 hover:bg-danger/10 hover:text-danger">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
                           </div>
                         </td>
                       </motion.tr>
@@ -358,81 +237,7 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Product Form Dialog */}
-      <Dialog open={productDialog} onOpenChange={setProductDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display">{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleProductSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-1">
-                <Label>Nome do Produto *</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex: Camiseta Básica Branca" required />
-              </div>
-              <div className="space-y-1">
-                <Label>SKU</Label>
-                <div className="flex gap-2">
-                  <Input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="001" className="flex-1" />
-                  <Button type="button" variant="outline" size="sm" onClick={handleGenerateSku} disabled={generatingSku} title="Gerar SKU automático">
-                    {generatingSku ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">Clique em 🪄 para gerar automaticamente</p>
-              </div>
-              <div className="space-y-1">
-                <Label>Categoria</Label>
-                <div className="flex gap-2">
-                  <Select
-                    value={form.category_id || '__none__'}
-                    onValueChange={v => {
-                      const realId = v === '__none__' ? '' : v;
-                      const cat = categories.find(c => c.id === realId);
-                      setForm(f => ({ ...f, category_id: realId, category: cat?.name ?? '' }));
-                    }}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Selecionar..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Sem categoria</SelectItem>
-                      {categories.map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="outline" size="sm" onClick={() => navigate('/categories')} title="Gerenciar categorias">
-                    <Tag className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label>Custo (R$)</Label>
-                <Input type="number" step="0.01" value={form.cost_price} onChange={e => setForm(f => ({ ...f, cost_price: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label>Preço de Venda (R$)</Label>
-                <Input type="number" step="0.01" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label>Estoque Inicial</Label>
-                <Input type="number" min={0} value={form.stock_quantity} onChange={e => setForm(f => ({ ...f, stock_quantity: Number(e.target.value) }))} />
-              </div>
-              <div className="space-y-1">
-                <Label>Estoque Mínimo</Label>
-                <Input type="number" min={0} value={form.min_stock} onChange={e => setForm(f => ({ ...f, min_stock: Number(e.target.value) }))} />
-                <p className="text-xs text-muted-foreground">Alerta quando estoque atingir este valor</p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setProductDialog(false)}>Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="gradient-primary text-primary-foreground shadow-primary">
-                {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : 'Salvar'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Adjust Stock Dialog */}
 
       {/* Adjust Stock Dialog */}
       <Dialog open={adjustDialog} onOpenChange={setAdjustDialog}>
@@ -491,19 +296,6 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="font-display text-danger flex items-center gap-2"><Trash2 className="w-5 h-5" /> Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          <p className="text-muted-foreground text-sm">Tem certeza que deseja excluir este produto?</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Excluir</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Layout>
   );
 }

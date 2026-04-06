@@ -456,7 +456,7 @@ export default function Sales() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    {['Data', 'Produto', 'SKU', 'Qtd', 'Preço Unit.', 'Total', 'Vendedor', 'Origem', 'Status', 'Ações'].map(h => (
+                    {['Data', 'Produto', 'SKU', 'Qtd', 'Preço Unit.', 'Total', 'Vendedor', 'Origem', 'Ações'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -489,11 +489,6 @@ export default function Sales() {
                       <td className="px-4 py-3">
                         <Badge variant={s.source === 'shopee' ? 'default' : 'secondary'} className="text-xs">
                           {s.source === 'shopee' ? '🛍 Shopee' : '✍ Manual'}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={s.status === 'completed' ? 'outline' : 'secondary'} className="text-xs">
-                          {s.status === 'completed' ? 'Concluído' : s.status}
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
@@ -558,17 +553,6 @@ export default function Sales() {
                     <SelectContent>
                       <SelectItem value="manual">Manual</SelectItem>
                       <SelectItem value="shopee">Shopee</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>Status</Label>
-                  <Select value={multiStatus} onValueChange={setMultiStatus}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="completed">Concluído</SelectItem>
-                      <SelectItem value="pending">Pendente</SelectItem>
-                      <SelectItem value="cancelled">Cancelado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -843,17 +827,6 @@ export default function Sales() {
                     <SelectContent>
                       <SelectItem value="manual">Manual</SelectItem>
                       <SelectItem value="shopee">Shopee</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>Status</Label>
-                  <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="completed">Concluído</SelectItem>
-                      <SelectItem value="pending">Pendente</SelectItem>
-                      <SelectItem value="cancelled">Cancelado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

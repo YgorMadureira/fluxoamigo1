@@ -241,9 +241,6 @@ export default function Inventory() {
               <Tag className="w-4 h-4" /> Categorias
             </Button>
             <Button onClick={fetchData} variant="outline" size="sm"><RefreshCw className="w-4 h-4" /></Button>
-            <Button onClick={openNew} size="sm" className="gap-2 gradient-primary text-primary-foreground shadow-primary">
-              <Plus className="w-4 h-4" /> Novo Produto
-            </Button>
           </div>
         </div>
 
@@ -340,12 +337,6 @@ export default function Inventory() {
                             <Button size="sm" variant="ghost" onClick={() => openAdjust(p)} className="h-7 px-2 text-xs hover:bg-warning/10 hover:text-warning gap-1">
                               <Package className="w-3 h-3" /> Ajustar
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setDeleteId(p.id)} className="h-7 w-7 p-0 hover:bg-danger/10 hover:text-danger">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
                           </div>
                         </td>
                       </motion.tr>
@@ -358,81 +349,7 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Product Form Dialog */}
-      <Dialog open={productDialog} onOpenChange={setProductDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display">{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleProductSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-1">
-                <Label>Nome do Produto *</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex: Camiseta Básica Branca" required />
-              </div>
-              <div className="space-y-1">
-                <Label>SKU</Label>
-                <div className="flex gap-2">
-                  <Input value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="001" className="flex-1" />
-                  <Button type="button" variant="outline" size="sm" onClick={handleGenerateSku} disabled={generatingSku} title="Gerar SKU automático">
-                    {generatingSku ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">Clique em 🪄 para gerar automaticamente</p>
-              </div>
-              <div className="space-y-1">
-                <Label>Categoria</Label>
-                <div className="flex gap-2">
-                  <Select
-                    value={form.category_id || '__none__'}
-                    onValueChange={v => {
-                      const realId = v === '__none__' ? '' : v;
-                      const cat = categories.find(c => c.id === realId);
-                      setForm(f => ({ ...f, category_id: realId, category: cat?.name ?? '' }));
-                    }}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Selecionar..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Sem categoria</SelectItem>
-                      {categories.map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="outline" size="sm" onClick={() => navigate('/categories')} title="Gerenciar categorias">
-                    <Tag className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label>Custo (R$)</Label>
-                <Input type="number" step="0.01" value={form.cost_price} onChange={e => setForm(f => ({ ...f, cost_price: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label>Preço de Venda (R$)</Label>
-                <Input type="number" step="0.01" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label>Estoque Inicial</Label>
-                <Input type="number" min={0} value={form.stock_quantity} onChange={e => setForm(f => ({ ...f, stock_quantity: Number(e.target.value) }))} />
-              </div>
-              <div className="space-y-1">
-                <Label>Estoque Mínimo</Label>
-                <Input type="number" min={0} value={form.min_stock} onChange={e => setForm(f => ({ ...f, min_stock: Number(e.target.value) }))} />
-                <p className="text-xs text-muted-foreground">Alerta quando estoque atingir este valor</p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setProductDialog(false)}>Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="gradient-primary text-primary-foreground shadow-primary">
-                {submitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : 'Salvar'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Adjust Stock Dialog */}
 
       {/* Adjust Stock Dialog */}
       <Dialog open={adjustDialog} onOpenChange={setAdjustDialog}>
@@ -491,19 +408,6 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="font-display text-danger flex items-center gap-2"><Trash2 className="w-5 h-5" /> Confirmar Exclusão</DialogTitle>
-          </DialogHeader>
-          <p className="text-muted-foreground text-sm">Tem certeza que deseja excluir este produto?</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Excluir</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Layout>
   );
 }

@@ -28,8 +28,6 @@ const emptyForm = {
   name: '',
   sku: '',
   unit_price: '',
-  cost_price: '',
-  stock_quantity: 0,
   min_stock: 5,
   category: '',
   category_id: '',
@@ -103,8 +101,6 @@ export default function Products() {
       name: p.name,
       sku: p.sku ?? '',
       unit_price: String(p.unit_price),
-      cost_price: String(p.cost_price),
-      stock_quantity: p.stock_quantity,
       min_stock: p.min_stock ?? 5,
       category: p.category ?? '',
       category_id: p.category_id ?? '',
@@ -118,18 +114,20 @@ export default function Products() {
     if (!form.name.trim()) return;
     setSubmitting(true);
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       name: form.name.trim(),
       sku: form.sku || null,
       unit_price: parseFloat(form.unit_price) || 0,
-      cost_price: parseFloat(form.cost_price) || 0,
-      stock_quantity: Number(form.stock_quantity),
       min_stock: Number(form.min_stock) || 5,
       category: form.category || null,
       category_id: form.category_id || null,
       company_id: profile?.company_id ?? '',
       updated_at: new Date().toISOString(),
     };
+    if (!editingId) {
+      payload.stock_quantity = 0;
+      payload.cost_price = 0;
+    }
 
     let error: { message: string } | null = null;
     if (editingId) {
@@ -151,6 +149,12 @@ export default function Products() {
   };
 
   const handleDelete = async (id: string) => {
+    const product = products.find(p => p.id === id);
+    if (product && product.stock_quantity > 0) {
+      toast({ title: 'Não é possível excluir', description: 'Somente produtos com estoque zerado podem ser excluídos. Faça um ajuste de estoque antes.', variant: 'destructive' });
+      setDeleteId(null);
+      return;
+    }
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) toast({ title: 'Erro ao excluir', variant: 'destructive' });
     else {
@@ -441,77 +445,34 @@ export default function Products() {
               </div>
             </div>
 
-            {/* Prices */}
+            {/* Price */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-1"><DollarSign className="w-3 h-3" /> Preços</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Custo (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    value={form.cost_price}
-                    onChange={e => setForm(f => ({ ...f, cost_price: e.target.value }))}
-                    placeholder="0,00"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Preço de Venda (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    value={form.unit_price}
-                    onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))}
-                    placeholder="0,00"
-                  />
-                </div>
+              <Label className="flex items-center gap-1"><DollarSign className="w-3 h-3" /> Preço de Venda</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Preço de Venda (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={form.unit_price}
+                  onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))}
+                  placeholder="0,00"
+                />
               </div>
-              {form.cost_price && form.unit_price && parseFloat(form.unit_price) > 0 && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="rounded-lg bg-muted/40 border border-border p-2.5 flex items-center justify-between"
-                >
-                  <span className="text-xs text-muted-foreground">Margem de lucro estimada</span>
-                  <span className={`text-sm font-bold ${
-                    ((parseFloat(form.unit_price) - parseFloat(form.cost_price || '0')) / parseFloat(form.unit_price) * 100) >= 30
-                      ? 'text-success'
-                      : ((parseFloat(form.unit_price) - parseFloat(form.cost_price || '0')) / parseFloat(form.unit_price) * 100) >= 10
-                        ? 'text-warning'
-                        : 'text-danger'
-                  }`}>
-                    {(((parseFloat(form.unit_price) - parseFloat(form.cost_price || '0')) / parseFloat(form.unit_price)) * 100).toFixed(1)}%
-                  </span>
-                </motion.div>
-              )}
+              <p className="text-xs text-muted-foreground">O custo será definido automaticamente ao registrar uma compra.</p>
             </div>
 
-            {/* Stock */}
+            {/* Min Stock */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-1"><Package className="w-3 h-3" /> Controle de Estoque</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Qtd. em Estoque</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.stock_quantity}
-                    onChange={e => setForm(f => ({ ...f, stock_quantity: Number(e.target.value) }))}
-                  />
-                  {!editingId && <p className="text-xs text-muted-foreground">Estoque inicial</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Estoque Mínimo</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={form.min_stock}
-                    onChange={e => setForm(f => ({ ...f, min_stock: Number(e.target.value) }))}
-                  />
-                  <p className="text-xs text-muted-foreground">Alerta de reposição</p>
-                </div>
+              <Label className="flex items-center gap-1"><Package className="w-3 h-3" /> Estoque Mínimo</Label>
+              <div className="space-y-1.5">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.min_stock}
+                  onChange={e => setForm(f => ({ ...f, min_stock: Number(e.target.value) }))}
+                />
+                <p className="text-xs text-muted-foreground">Alerta de reposição quando atingir este valor</p>
               </div>
             </div>
 
@@ -536,7 +497,7 @@ export default function Products() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-muted-foreground text-sm">
-            Tem certeza que deseja excluir este produto? Esta ação não poderá ser desfeita.
+            Tem certeza que deseja excluir este produto? Somente produtos com estoque zerado podem ser excluídos.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>

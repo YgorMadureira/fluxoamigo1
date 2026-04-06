@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
-  Plus, Pencil, Trash2, Search, RefreshCw, Package, Loader2,
-  AlertTriangle, CheckCircle, History, Tag, Wand2
+  Search, RefreshCw, Package, Loader2,
+  AlertTriangle, CheckCircle, History, Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Database } from '@/integrations/supabase/database.types';
@@ -59,16 +59,13 @@ export default function Inventory() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [productDialog, setProductDialog] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ ...emptyProductForm });
-  const [submitting, setSubmitting] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [adjustDialog, setAdjustDialog] = useState(false);
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [adjustQty, setAdjustQty] = useState('');
   const [justification, setJustification] = useState('');
-  const [generatingSku, setGeneratingSku] = useState(false);
+  const [adjustDialog, setAdjustDialog] = useState(false);
+  const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!profile?.company_id) return;

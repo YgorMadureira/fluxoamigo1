@@ -24,33 +24,6 @@ interface Category { id: string; name: string; }
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-const emptyProductForm = {
-  name: '',
-  sku: '',
-  unit_price: '',
-  cost_price: '',
-  stock_quantity: 0,
-  min_stock: 5,
-  category: '',
-  category_id: '',
-};
-
-async function generateSku(companyId: string): Promise<string> {
-  const { data } = await supabase
-    .from('products')
-    .select('sku')
-    .eq('company_id', companyId)
-    .not('sku', 'is', null);
-
-  const nums = (data ?? [])
-    .map(p => parseInt(p.sku ?? '', 10))
-    .filter(n => !isNaN(n));
-
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-  const digits = Math.max(3, String(next).length);
-  return String(next).padStart(digits, '0');
-}
-
 export default function Inventory() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
@@ -63,8 +36,6 @@ export default function Inventory() {
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [adjustQty, setAdjustQty] = useState('');
   const [justification, setJustification] = useState('');
-  const [adjustDialog, setAdjustDialog] = useState(false);
-  const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -82,85 +53,6 @@ export default function Inventory() {
   }, [toast, profile]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handleGenerateSku = async () => {
-    if (!profile?.company_id) return;
-    setGeneratingSku(true);
-    const sku = await generateSku(profile.company_id);
-    setForm(f => ({ ...f, sku }));
-    setGeneratingSku(false);
-  };
-
-  const openNew = async () => {
-    setForm({ ...emptyProductForm });
-    setEditingId(null);
-    setProductDialog(true);
-    // auto-generate SKU for new product
-    if (profile?.company_id) {
-      const sku = await generateSku(profile.company_id);
-      setForm(f => ({ ...f, sku }));
-    }
-  };
-
-  const openEdit = (p: Product) => {
-    setForm({
-      name: p.name,
-      sku: p.sku ?? '',
-      unit_price: String(p.unit_price),
-      cost_price: String(p.cost_price),
-      stock_quantity: p.stock_quantity,
-      min_stock: p.min_stock ?? 5,
-      category: p.category ?? '',
-      category_id: p.category_id ?? '',
-    });
-    setEditingId(p.id);
-    setProductDialog(true);
-  };
-
-  const handleProductSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    const payload = {
-      name: form.name,
-      sku: form.sku || null,
-      unit_price: parseFloat(form.unit_price) || 0,
-      cost_price: parseFloat(form.cost_price) || 0,
-      stock_quantity: Number(form.stock_quantity),
-      min_stock: Number(form.min_stock) || 5,
-      category: form.category || null,
-      category_id: form.category_id || null,
-      company_id: profile?.company_id ?? '',
-      updated_at: new Date().toISOString(),
-    };
-
-    let error: { message: string } | null = null;
-    if (editingId) {
-      const res = await supabase.from('products').update(payload as never).eq('id', editingId);
-      error = res.error as { message: string } | null;
-    } else {
-      const res = await supabase.from('products').insert(payload as never);
-      error = res.error as { message: string } | null;
-    }
-
-    if (error) {
-      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
-    } else {
-      toast({ title: editingId ? 'Produto atualizado!' : 'Produto cadastrado!' });
-      setProductDialog(false);
-      fetchData();
-    }
-    setSubmitting(false);
-  };
-
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (error) toast({ title: 'Erro ao excluir', variant: 'destructive' });
-    else {
-      toast({ title: 'Produto excluído!' });
-      setProducts(prev => prev.filter(p => p.id !== id));
-    }
-    setDeleteId(null);
-  };
 
   const openAdjust = (p: Product) => {
     setAdjustProduct(p);

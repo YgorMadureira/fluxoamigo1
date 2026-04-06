@@ -836,7 +836,7 @@ REGRAS:
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    {['Data', 'Produto', 'Qtd', 'Custo Unit.', 'Total', 'Fornecedor', 'Ações'].map(h => (
+                    {['Data', 'Produto', 'SKU', 'Qtd', 'Custo Unit.', 'Total', 'Fornecedor', 'Ações'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -847,6 +847,14 @@ REGRAS:
                       className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatDateBR(p.purchase_date)}</td>
                       <td className="px-4 py-3 font-medium text-foreground max-w-[200px] truncate">{p.product_name}</td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const prod = products.find(pr => pr.id === p.product_id);
+                          return prod?.sku
+                            ? <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{prod.sku}</span>
+                            : <span className="text-muted-foreground text-xs">—</span>;
+                        })()}
+                      </td>
                       <td className="px-4 py-3 text-center">{p.quantity}</td>
                       <td className="px-4 py-3 text-right">{formatBRL(Number(p.unit_cost))}</td>
                       <td className="px-4 py-3 text-right font-semibold text-danger">{formatBRL(Number(p.total_amount))}</td>

@@ -377,6 +377,10 @@ export default function Purchases() {
     if (validItems.length === 0) {
       toast({ title: 'Adicione ao menos um produto', variant: 'destructive' }); return;
     }
+    const unregistered = validItems.filter(it => !it.product_id);
+    if (unregistered.length > 0) {
+      toast({ title: 'Produto não cadastrado', description: `"${unregistered[0].product_name}" não está cadastrado. Cadastre o produto antes de registrar a compra.`, variant: 'destructive' }); return;
+    }
     setMultiSubmitting(true);
     let successCount = 0;
     for (const item of validItems) {
@@ -461,8 +465,8 @@ export default function Purchases() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.product_name.trim()) {
-      toast({ title: 'Selecione ou informe um produto', variant: 'destructive' }); return;
+    if (!form.product_id) {
+      toast({ title: 'Produto não cadastrado', description: 'Selecione um produto cadastrado ou cadastre um novo antes de registrar a compra.', variant: 'destructive' }); return;
     }
     setSubmitting(true);
     const payload = {

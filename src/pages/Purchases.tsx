@@ -696,6 +696,10 @@ REGRAS:
     if (toImport.length === 0) {
       toast({ title: 'Selecione ao menos um item para importar', variant: 'destructive' }); return;
     }
+    const unmatched = toImport.filter(i => !i.matched_product_id);
+    if (unmatched.length > 0) {
+      toast({ title: 'Produto não cadastrado', description: `"${unmatched[0].description}" não está vinculado a um produto cadastrado. Cadastre-o antes de importar.`, variant: 'destructive' }); return;
+    }
     setBatchSubmitting(true);
     let successCount = 0;
     for (const item of toImport) {

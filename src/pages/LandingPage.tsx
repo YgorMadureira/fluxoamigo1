@@ -132,6 +132,18 @@ export default function LandingPage() {
             >
               Começar Agora <ArrowRight className="w-5 h-5 ml-1" />
             </Button>
+            <a
+              href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo."
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                variant="outline"
+                className="border-[hsl(145,70%,40%)/0.5] bg-[hsl(145,70%,40%)/0.1] text-[hsl(145,70%,60%)] hover:bg-[hsl(145,70%,40%)/0.2] hover:text-[hsl(145,70%,70%)] px-8 h-13 text-lg w-full"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" /> Falar no WhatsApp
+              </Button>
+            </a>
             <Button
               variant="outline"
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
@@ -401,12 +413,26 @@ export default function LandingPage() {
             <p className="text-[hsl(220,10%,55%)] text-lg mb-8 max-w-xl mx-auto">
               Junte-se a centenas de empresários que já transformaram seus negócios com o Fluxo Amigo.
             </p>
-            <Button
-              onClick={() => navigate('/login')}
-              className="gradient-primary text-[hsl(0,0%,100%)] font-bold px-10 h-14 text-lg shadow-primary hover:opacity-90 transition-all hover:scale-105"
-            >
-              Começar Agora — É Rápido <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button
+                onClick={() => navigate('/login')}
+                className="gradient-primary text-[hsl(0,0%,100%)] font-bold px-10 h-14 text-lg shadow-primary hover:opacity-90 transition-all hover:scale-105"
+              >
+                Começar Agora — É Rápido <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+              <a
+                href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo."
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button
+                  variant="outline"
+                  className="border-[hsl(145,70%,40%)/0.5] bg-[hsl(145,70%,40%)/0.1] text-[hsl(145,70%,60%)] hover:bg-[hsl(145,70%,40%)/0.2] hover:text-[hsl(145,70%,70%)] px-10 h-14 text-lg w-full"
+                >
+                  <MessageCircle className="w-5 h-5 mr-2" /> Falar no WhatsApp
+                </Button>
+              </a>
+            </div>
             <p className="text-xs text-[hsl(220,10%,40%)] mt-4">Sem cartão de crédito para começar • Suporte humano incluso</p>
           </div>
         </motion.div>

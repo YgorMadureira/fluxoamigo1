@@ -173,7 +173,7 @@ export default function LandingPage() {
               <div className="w-3 h-3 rounded-full bg-[hsl(38,90%,50%)]" />
               <div className="w-3 h-3 rounded-full bg-[hsl(145,70%,40%)]" />
             </div>
-            <img src={mockupDashboard} alt="Dashboard Fluxo Amigo" className="w-full" width={1280} height={720} />
+            <img src={mockupDashboard} alt="Dashboard Fluxo Amigo" className="w-full aspect-video object-cover object-top" width={1920} height={1080} />
           </div>
           {/* Glow effect */}
           <div className="absolute -inset-4 -z-10 rounded-3xl opacity-30 blur-3xl"
@@ -259,7 +259,7 @@ export default function LandingPage() {
                       <div className="w-2.5 h-2.5 rounded-full bg-[hsl(38,90%,50%)]" />
                       <div className="w-2.5 h-2.5 rounded-full bg-[hsl(145,70%,40%)]" />
                     </div>
-                    <img src={s.img} alt={s.title} loading="lazy" className="w-full" width={1280} height={720} />
+                    <img src={s.img} alt={s.title} loading="lazy" className="w-full aspect-video object-cover object-top" width={1920} height={1080} />
                   </div>
                 </div>
               </motion.div>
@@ -425,6 +425,18 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+
+      {/* WhatsApp Floating Button */}
+      <a
+        href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+        style={{ background: 'hsl(145, 70%, 40%)' }}
+        aria-label="Fale conosco pelo WhatsApp"
+      >
+        <MessageCircle className="w-7 h-7 text-[hsl(0,0%,100%)]" fill="hsl(0,0%,100%)" />
+      </a>
     </div>
   );
 }

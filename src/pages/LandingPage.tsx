@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   ShoppingCart, Package, BarChart3, TrendingUp, Shield, Zap, Users, FileText,
-  ArrowRight, Check, Star, ChevronDown, Layers, ScanLine, RefreshCw
+  ArrowRight, Check, Star, ChevronDown, Layers, ScanLine, RefreshCw, MessageCircle
 } from 'lucide-react';
 import logo from '@/assets/logo-osdevs.jpeg';
 import mockupDashboard from '@/assets/mockup-dashboard.jpg';

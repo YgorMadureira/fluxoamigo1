@@ -133,7 +133,7 @@ export default function LandingPage() {
               Começar Agora <ArrowRight className="w-5 h-5 ml-1" />
             </Button>
             <a
-              href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo."
+              href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo, gestão de caixa."
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -414,7 +414,7 @@ export default function LandingPage() {
                 Começar Agora — É Rápido <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
               <a
-                href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo."
+                href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo, gestão de caixa."
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -447,7 +447,7 @@ export default function LandingPage() {
 
       {/* WhatsApp Floating Button */}
       <a
-        href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo."
+        href="https://wa.me/5511964297572?text=Olá! Gostaria de saber mais sobre o Fluxo Amigo, gestão de caixa."
         target="_blank"
         rel="noopener noreferrer"
         className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"

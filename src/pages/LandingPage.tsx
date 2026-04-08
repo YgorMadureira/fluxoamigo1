@@ -144,13 +144,6 @@ export default function LandingPage() {
                 <MessageCircle className="w-5 h-5 mr-2" /> Falar no WhatsApp
               </Button>
             </a>
-            <Button
-              variant="outline"
-              onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-              className="border-[hsl(228,20%,20%)] bg-transparent text-[hsl(220,15%,80%)] hover:bg-[hsl(228,25%,12%)] hover:text-[hsl(220,15%,92%)] px-8 h-13 text-lg"
-            >
-              Ver Funcionalidades <ChevronDown className="w-5 h-5 ml-1" />
-            </Button>
           </motion.div>
 
           {/* Stats */}

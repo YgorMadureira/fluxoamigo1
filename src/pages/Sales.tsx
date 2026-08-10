@@ -304,20 +304,24 @@ export default function Sales() {
           const currentQty = prod.stock_quantity ?? 0;
           const newQty = Math.max(0, currentQty - Number(item.quantity));
           const minStock = prod.min_stock ?? 5;
-          await Promise.all([
-            supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', prod.id),
-            supabase.from('inventory_logs').insert({
-              product_id: prod.id,
-              user_id: user?.id ?? null,
-              type: 'sale',
-              quantity_change: -Number(item.quantity),
-              quantity_before: currentQty,
-              quantity_after: newQty,
-              justification: `Venda #${sharedOrderId} registrada — Origem: ${multiSource === 'shopee' ? 'Shopee' : 'Manual'}`,
-              user_name: sellerName,
-              reference_id: sharedOrderId,
-            } as never),
-          ]);
+
+          // Update stock
+          const stockRes = await supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', prod.id);
+          if (stockRes.error) console.error('[Sales] Erro ao atualizar estoque:', stockRes.error);
+
+          // Insert inventory log (reference_id is UUID column, so we don't send string codes)
+          const logRes = await supabase.from('inventory_logs').insert({
+            product_id: prod.id,
+            user_id: user?.id ?? null,
+            type: 'sale',
+            quantity_change: -Number(item.quantity),
+            quantity_before: currentQty,
+            quantity_after: newQty,
+            justification: `Venda #${sharedOrderId} registrada — Origem: ${multiSource === 'shopee' ? 'Shopee' : 'Manual'}`,
+            user_name: sellerName,
+          } as never);
+          if (logRes.error) console.error('[Sales] Erro ao inserir log de estoque:', logRes.error);
+
           if (newQty <= minStock) {
             toast({ title: `⚠️ Estoque baixo: ${prod.name}`, description: `Restam apenas ${newQty} unidade(s).`, variant: 'destructive' });
           }
@@ -387,20 +391,22 @@ export default function Sales() {
         const newQty = Math.max(0, currentQty - Number(form.quantity));
         const minStock = prod.min_stock ?? 5;
 
-        await Promise.all([
-          supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', prod.id),
-          supabase.from('inventory_logs').insert({
-            product_id: prod.id,
-            user_id: user?.id ?? null,
-            type: 'sale',
-            quantity_change: -Number(form.quantity),
-            quantity_before: currentQty,
-            quantity_after: newQty,
-            justification: `Venda #${saleCode} registrada — Origem: ${form.source === 'shopee' ? 'Shopee' : 'Manual'}`,
-            user_name: sellerName,
-            reference_id: saleCode,
-          } as never),
-        ]);
+        // Update stock
+        const stockRes = await supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', prod.id);
+        if (stockRes.error) console.error('[Sales] Erro ao atualizar estoque:', stockRes.error);
+
+        // Insert inventory log (reference_id is UUID column, so we don't send string codes)
+        const logRes = await supabase.from('inventory_logs').insert({
+          product_id: prod.id,
+          user_id: user?.id ?? null,
+          type: 'sale',
+          quantity_change: -Number(form.quantity),
+          quantity_before: currentQty,
+          quantity_after: newQty,
+          justification: `Venda #${saleCode} registrada — Origem: ${form.source === 'shopee' ? 'Shopee' : 'Manual'}`,
+          user_name: sellerName,
+        } as never);
+        if (logRes.error) console.error('[Sales] Erro ao inserir log de estoque:', logRes.error);
 
         if (newQty <= minStock) {
           toast({
@@ -454,7 +460,7 @@ export default function Sales() {
         .eq('id', productId);
 
       // 2. Registra o estorno como ENTRADA "Venda Cancelada" no histórico com o ID da venda
-      await supabase
+      const logRes = await supabase
         .from('inventory_logs')
         .insert({
           product_id: productId,
@@ -465,8 +471,8 @@ export default function Sales() {
           quantity_after: restoredStock,
           justification: `Venda #${saleCode} cancelada — ${sale.product_name} (Estorno)`,
           user_name: sellerName,
-          reference_id: saleCode,
         } as never);
+      if (logRes.error) console.error('[Sales] Erro ao inserir log de cancelamento:', logRes.error);
     }
   };
 

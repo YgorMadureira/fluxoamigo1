@@ -42,11 +42,14 @@ const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 const getSaleCode = (l: LogRow) => {
-  if (l.reference_id && (l.reference_id.startsWith('PED-') || l.reference_id.startsWith('VEN-') || l.reference_id.length >= 6)) {
+  // Extract sale code from justification (e.g. "Venda #001 registrada" -> "001")
+  const match = l.justification?.match(/#([A-Za-z0-9-]+)/);
+  if (match) return match[1];
+  // Fallback to reference_id if it's a non-UUID format
+  if (l.reference_id && !/^[0-9a-f]{8}-/.test(l.reference_id)) {
     return l.reference_id;
   }
-  const match = l.justification?.match(/#([A-Za-z0-9-]+)/);
-  return match ? match[1] : null;
+  return null;
 };
 
 export default function InventoryHistory() {

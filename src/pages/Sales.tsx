@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Layout from '@/components/Layout';
 import MonthFilterSelect from '@/components/MonthFilterSelect';
@@ -13,14 +13,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import {
-  Plus, Pencil, Trash2, Search, RefreshCw, ShoppingCart, X, Loader2, Store, AlertTriangle, Package, Tag, ListPlus
+  Plus, Pencil, Trash2, Search, RefreshCw, ShoppingCart, X, Loader2, Store, AlertTriangle, Package, Tag, ListPlus, ChevronDown, ChevronRight
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Database } from '@/integrations/supabase/database.types';
+import { calcShopeeCommission, calcNetProfit, calcOrderNetProfit } from '@/lib/shopeeCommission';
 
 type Sale = Database['public']['Tables']['sales']['Row'];
-interface Product { id: string; name: string; unit_price: number; stock_quantity: number; category: string | null; category_id: string | null; min_stock: number | null; sku: string | null; }
+interface Product { id: string; name: string; unit_price: number; cost_price: number; stock_quantity: number; category: string | null; category_id: string | null; min_stock: number | null; sku: string | null; }
 interface Category { id: string; name: string }
 
 // Multi-item sale line
@@ -39,13 +40,19 @@ interface SaleItem {
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-const formatDateBR = (dateStr: string) => {
+const formatDateBR = (dateStr?: string | null) => {
+  if (!dateStr) return '—';
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return format(parseISO(dateStr + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR });
   }
-  const d = new Date(dateStr);
-  const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
-  return format(brt, 'dd/MM/yyyy HH:mm', { locale: ptBR });
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
+    return format(brt, 'dd/MM/yyyy HH:mm', { locale: ptBR });
+  } catch {
+    return dateStr;
+  }
 };
 
 const emptyForm = {
@@ -72,7 +79,7 @@ const newSaleItem = (): SaleItem => ({
 export default function Sales() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
-  const { startDate, endDate } = useMonthFilter();
+  const { startDate, endDate, setSelectedMonth } = useMonthFilter();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -86,6 +93,8 @@ export default function Sales() {
   const [shopeeDialogOpen, setShopeeDialogOpen] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+  const [deleteOrderItems, setDeleteOrderItems] = useState<Sale[] | null>(null);
 
   // Multi-item mode
   const [multiMode, setMultiMode] = useState(false);
@@ -116,7 +125,7 @@ export default function Sales() {
     if (!profile?.company_id) return;
     const [prodRes, catRes] = await Promise.all([
       supabase.from('products')
-        .select('id, name, unit_price, stock_quantity, category, category_id, min_stock, sku')
+        .select('id, name, unit_price, cost_price, stock_quantity, category, category_id, min_stock, sku')
         .eq('company_id', profile.company_id)
         .order('name'),
       supabase.from('categories' as never).select('id, name').eq('company_id', profile.company_id).order('name') as unknown as Promise<{ data: Category[] | null }>,
@@ -211,6 +220,35 @@ export default function Sales() {
     updateMultiItem(itemId, { total_amount: total });
   };
 
+  const generateNextSaleCode = async (): Promise<string> => {
+    if (!profile?.company_id) return '001';
+    const { data } = await supabase
+      .from('sales')
+      .select('shopee_order_id')
+      .eq('company_id', profile.company_id);
+
+    let maxNum = 0;
+    if (data) {
+      for (const row of data) {
+        if (row.shopee_order_id) {
+          const val = row.shopee_order_id.trim();
+          if (/^\d+$/.test(val)) {
+            const num = parseInt(val, 10);
+            if (!isNaN(num) && num > maxNum && num < 1000000) {
+              maxNum = num;
+            }
+          }
+        }
+      }
+    }
+
+    const nextNum = maxNum + 1;
+    if (nextNum < 1000) {
+      return String(nextNum).padStart(3, '0');
+    }
+    return String(nextNum);
+  };
+
   const handleMultiSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const validItems = multiItems.filter(it => it.product_name.trim());
@@ -233,6 +271,11 @@ export default function Sales() {
     const sellerName = multiSource === 'shopee' ? 'ShopeeUser' : (profile?.full_name ?? user?.email ?? 'Usuário');
     let successCount = 0;
 
+    let sharedOrderId = multiShopeeId.trim();
+    if (!sharedOrderId) {
+      sharedOrderId = await generateNextSaleCode();
+    }
+
     for (const item of validItems) {
       const payload = {
         product_id: item.product_id || null, product_name: item.product_name,
@@ -240,13 +283,13 @@ export default function Sales() {
         total_amount: parseFloat(item.total_amount) || 0,
         sale_date: multiDate, source: multiSource,
         notes: multiNotes || null,
-        shopee_order_id: multiSource === 'shopee' ? multiShopeeId || null : null,
+        shopee_order_id: sharedOrderId,
         status: multiStatus, user_id: user?.id ?? null,
         company_id: profile?.company_id ?? '',
         seller_name: sellerName,
         category_id: item.category_id || null,
       };
-      const { error } = await supabase.from('sales').insert(payload as never);
+      const { data: inserted, error } = await supabase.from('sales').insert(payload as never).select('id');
       if (!error) {
         successCount++;
         const prod = products.find(p => p.id === item.product_id);
@@ -258,8 +301,9 @@ export default function Sales() {
             supabase.from('inventory_logs').insert({
               product_id: item.product_id, user_id: user?.id ?? null, type: 'sale',
               quantity_change: -Number(item.quantity), quantity_before: prod.stock_quantity, quantity_after: newQty,
-              justification: `Venda registrada — Origem: ${multiSource === 'shopee' ? 'Shopee' : 'Manual'}`,
+              justification: `Venda #${sharedOrderId} registrada — Origem: ${multiSource === 'shopee' ? 'Shopee' : 'Manual'}`,
               user_name: sellerName,
+              reference_id: sharedOrderId,
             } as never),
           ]);
           if (newQty <= minStock) {
@@ -271,6 +315,9 @@ export default function Sales() {
 
     toast({ title: `✅ ${successCount} venda(s) registrada(s) e estoque debitado!` });
     setDialogOpen(false);
+    if (multiDate) {
+      setSelectedMonth(startOfMonth(parseISO(multiDate + 'T00:00:00')));
+    }
     fetchSales(); fetchProducts();
     setMultiSubmitting(false);
   };
@@ -291,6 +338,11 @@ export default function Sales() {
       ? 'ShopeeUser'
       : (profile?.full_name ?? user?.email ?? 'Usuário');
 
+    let saleCode = form.shopee_order_id?.trim();
+    if (!saleCode) {
+      saleCode = await generateNextSaleCode();
+    }
+
     const payload = {
       product_id: form.product_id || null,
       product_name: form.product_name,
@@ -300,7 +352,7 @@ export default function Sales() {
       sale_date: form.sale_date,
       source: form.source,
       notes: form.notes || null,
-      shopee_order_id: form.shopee_order_id || null,
+      shopee_order_id: saleCode,
       status: form.status,
       user_id: user?.id ?? null,
       company_id: profile?.company_id ?? '',
@@ -313,7 +365,7 @@ export default function Sales() {
       const res = await supabase.from('sales').update({ ...payload, updated_at: new Date().toISOString() } as never).eq('id', editingId);
       error = res.error as { message: string } | null;
     } else {
-      const res = await supabase.from('sales').insert(payload as never);
+      const res = await supabase.from('sales').insert(payload as never).select('id');
       error = res.error as { message: string } | null;
 
       if (!error && form.product_id && prod) {
@@ -329,8 +381,9 @@ export default function Sales() {
             quantity_change: -Number(form.quantity),
             quantity_before: prod.stock_quantity,
             quantity_after: newQty,
-            justification: `Venda registrada — Origem: ${form.source === 'shopee' ? 'Shopee' : 'Manual'}`,
+            justification: `Venda #${saleCode} registrada — Origem: ${form.source === 'shopee' ? 'Shopee' : 'Manual'}`,
             user_name: sellerName,
+            reference_id: saleCode,
           } as never),
         ]);
 
@@ -351,28 +404,153 @@ export default function Sales() {
     } else {
       toast({ title: editingId ? 'Venda atualizada!' : '✅ Venda registrada e estoque debitado!' });
       setDialogOpen(false);
+      if (form.sale_date) {
+        setSelectedMonth(startOfMonth(parseISO(form.sale_date + 'T00:00:00')));
+      }
       fetchSales();
     }
     setSubmitting(false);
   };
 
+  const restoreStockAndLogCancellation = async (salesToDelete: Sale[]) => {
+    const sellerName = profile?.full_name ?? user?.email ?? 'Usuário';
+
+    for (const sale of salesToDelete) {
+      if (!sale.product_id) continue;
+
+      const saleCode = sale.shopee_order_id || `VEN-${sale.id.slice(0, 6).toUpperCase()}`;
+
+      // 1. Restaura a quantidade no estoque do produto
+      const { data: prodData } = await supabase
+        .from('products')
+        .select('stock_quantity')
+        .eq('id', sale.product_id)
+        .maybeSingle();
+
+      if (prodData) {
+        const currentStock = prodData.stock_quantity ?? 0;
+        const qtyToRestore = Number(sale.quantity);
+        const restoredStock = currentStock + qtyToRestore;
+
+        await supabase
+          .from('products')
+          .update({ stock_quantity: restoredStock, updated_at: new Date().toISOString() } as never)
+          .eq('id', sale.product_id);
+
+        // 2. Registra o estorno como ENTRADA "Venda Cancelada" no histórico com o ID da venda
+        await supabase
+          .from('inventory_logs')
+          .insert({
+            product_id: sale.product_id,
+            user_id: user?.id ?? null,
+            type: 'sale_cancellation',
+            quantity_change: qtyToRestore,
+            quantity_before: currentStock,
+            quantity_after: restoredStock,
+            justification: `Venda #${saleCode} cancelada — ${sale.product_name} (Estorno)`,
+            user_name: sellerName,
+            reference_id: saleCode,
+          } as never);
+      }
+    }
+  };
+
   const handleDelete = async (id: string) => {
+    const target = sales.find(s => s.id === id);
+    if (target) {
+      await restoreStockAndLogCancellation([target]);
+    }
+
     const { error } = await supabase.from('sales').delete().eq('id', id);
     if (error) {
       toast({ title: 'Erro ao excluir', variant: 'destructive' });
     } else {
-      toast({ title: 'Venda excluída!' });
+      toast({ title: 'Venda cancelada! Estoque estornado e registrado no histórico.' });
       setSales(prev => prev.filter(s => s.id !== id));
+      fetchProducts();
     }
     setDeleteId(null);
   };
 
+  const handleDeleteGroup = async (items: Sale[]) => {
+    await restoreStockAndLogCancellation(items);
+
+    const ids = items.map(i => i.id);
+    const { error } = await supabase.from('sales').delete().in('id', ids);
+    if (error) {
+      toast({ title: 'Erro ao excluir pedido', variant: 'destructive' });
+    } else {
+      toast({ title: 'Pedido cancelado! Estoque estornado e registrado no histórico.' });
+      setSales(prev => prev.filter(s => !ids.includes(s.id)));
+      fetchProducts();
+    }
+    setDeleteOrderItems(null);
+  };
+
   const filtered = sales.filter(s =>
-    s.product_name.toLowerCase().includes(search.toLowerCase()) ||
+    (s.product_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (s.shopee_order_id ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
+  const groupedOrders = useMemo(() => {
+    const map = new Map<string, Sale[]>();
+    filtered.forEach(s => {
+      const groupKey = s.shopee_order_id || s.id;
+      const list = map.get(groupKey) ?? [];
+      list.push(s);
+      map.set(groupKey, list);
+    });
+
+    const result: Array<{
+      groupId: string;
+      shopeeOrderId: string | null;
+      saleDate: string;
+      source: string;
+      sellerName: string;
+      items: Sale[];
+      totalRevenue: number;
+      totalQuantity: number;
+      netProfit: number;
+    }> = [];
+
+    map.forEach((items, groupId) => {
+      if (!items || items.length === 0) return;
+      const first = items[0];
+      const totalRevenue = items.reduce((sum, item) => sum + (Number(item.total_amount) || 0), 0);
+      const totalQuantity = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+
+      const orderItemInputs = items.map(item => {
+        const prod = products.find(p => p.id === item.product_id);
+        return {
+          unitPrice: Number(item.unit_price) || 0,
+          costPrice: prod?.cost_price ?? 0,
+          quantity: Number(item.quantity) || 1,
+        };
+      });
+
+      const profitRes = calcOrderNetProfit(orderItemInputs, first.source || 'manual');
+
+      result.push({
+        groupId,
+        shopeeOrderId: first.shopee_order_id || null,
+        saleDate: first.sale_date || '',
+        source: first.source || 'manual',
+        sellerName: (first as Sale & { seller_name?: string })?.seller_name ?? '—',
+        items,
+        totalRevenue,
+        totalQuantity,
+        netProfit: profitRes.netProfit,
+      });
+    });
+
+    return result;
+  }, [filtered, products]);
+
   const totalRevenue = filtered.reduce((s, r) => s + Number(r.total_amount), 0);
+
+  const totalNetProfit = useMemo(() => {
+    return groupedOrders.reduce((sum, order) => sum + order.netProfit, 0);
+  }, [groupedOrders]);
 
   const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
@@ -418,7 +596,7 @@ export default function Sales() {
             { label: 'Total Vendas', value: filtered.length.toString(), color: 'text-primary' },
             { label: 'Receita Total', value: formatBRL(totalRevenue), color: 'text-success' },
             { label: 'Shopee', value: filtered.filter(s => s.source === 'shopee').length.toString(), color: 'text-warning' },
-            { label: 'Manuais', value: filtered.filter(s => s.source === 'manual').length.toString(), color: 'text-info' },
+            { label: 'Lucro Líquido', value: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalNetProfit), color: totalNetProfit >= 0 ? 'text-success' : 'text-danger' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-card border border-border rounded-xl p-4 shadow-card">
               <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">{label}</p>
@@ -456,53 +634,181 @@ export default function Sales() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    {['Data', 'Produto', 'SKU', 'Qtd', 'Preço Unit.', 'Total', 'Vendedor', 'Origem', 'Ações'].map(h => (
+                    {['Data', 'Produto', 'SKU', 'Qtd', 'Preço Unit.', 'Total', 'Lucro Líq.', 'Vendedor', 'Origem', 'Ações'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((s, i) => (
-                    <motion.tr
-                      key={s.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.02 }}
-                      className="border-b border-border/50 hover:bg-muted/30 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatDateBR(s.sale_date)}</td>
-                      <td className="px-4 py-3 font-medium text-foreground max-w-[180px] truncate">{s.product_name}</td>
-                      <td className="px-4 py-3">
-                        {(() => {
-                          const prod = products.find(p => p.id === s.product_id);
-                          return prod?.sku
-                            ? <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{prod.sku}</span>
-                            : <span className="text-muted-foreground text-xs">—</span>;
-                        })()}
-                      </td>
-                      <td className="px-4 py-3 text-center">{s.quantity}</td>
-                      <td className="px-4 py-3 text-right">{formatBRL(Number(s.unit_price))}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-success">{formatBRL(Number(s.total_amount))}</td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
-                        {(s as Sale & { seller_name?: string }).seller_name ?? '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={s.source === 'shopee' ? 'default' : 'secondary'} className="text-xs">
-                          {s.source === 'shopee' ? '🛍 Shopee' : '✍ Manual'}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => openEdit(s)} className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setDeleteId(s.id)} className="h-7 w-7 p-0 hover:bg-danger/10 hover:text-danger">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))}
+                  {groupedOrders.map((order, i) => {
+                    const isMulti = order.items.length > 1;
+                    const isExpanded = !!expandedOrders[order.groupId];
+
+                    if (!isMulti) {
+                      const s = order.items[0];
+                      const prod = products.find(p => p.id === s.product_id);
+                      return (
+                        <tr
+                          key={order.groupId}
+                          className="border-b border-border/50 hover:bg-muted/30 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatDateBR(s.sale_date)}</td>
+                          <td className="px-4 py-3 font-medium text-foreground max-w-[180px] truncate">{s.product_name}</td>
+                          <td className="px-4 py-3">
+                            {prod?.sku ? (
+                              <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{prod.sku}</span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">{s.quantity}</td>
+                          <td className="px-4 py-3 text-right">{formatBRL(Number(s.unit_price))}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-success">{formatBRL(Number(s.total_amount))}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`font-semibold ${order.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                              {formatBRL(order.netProfit)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{order.sellerName}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={order.source === 'shopee' ? 'default' : 'secondary'} className="text-xs">
+                              {order.source === 'shopee' ? '🛍 Shopee' : '✍ Manual'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => openEdit(s)} className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setDeleteId(s.id)} className="h-7 w-7 p-0 hover:bg-danger/10 hover:text-danger">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    // Multi-item grouped order row
+                    return (
+                      <React.Fragment key={order.groupId}>
+                        <tr
+                          className="border-b border-border/50 bg-card hover:bg-muted/30 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap font-medium">
+                            {formatDateBR(order.saleDate)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedOrders(prev => ({ ...prev, [order.groupId]: !prev[order.groupId] }))}
+                              className="flex items-center gap-2 text-left group"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-primary shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary shrink-0" />
+                              )}
+                              <div>
+                                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                                  <Package className="w-3.5 h-3.5 text-warning" />
+                                  <span>Pedido ({order.items.length} itens)</span>
+                                </div>
+                                {order.shopeeOrderId && (
+                                  <span className="text-xs text-muted-foreground font-mono">ID: {order.shopeeOrderId}</span>
+                                )}
+                              </div>
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline" className="text-xs font-mono">Vários</Badge>
+                          </td>
+                          <td className="px-4 py-3 text-center font-bold">{order.totalQuantity}</td>
+                          <td className="px-4 py-3 text-right text-muted-foreground text-xs">—</td>
+                          <td className="px-4 py-3 text-right font-bold text-success">{formatBRL(order.totalRevenue)}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`font-bold ${order.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                              {formatBRL(order.netProfit)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{order.sellerName}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={order.source === 'shopee' ? 'default' : 'secondary'} className="text-xs">
+                              {order.source === 'shopee' ? '🛍 Shopee' : '✍ Manual'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setExpandedOrders(prev => ({ ...prev, [order.groupId]: !prev[order.groupId] }))}
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                                title="Ver itens"
+                              >
+                                {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDeleteOrderItems(order.items)}
+                                className="h-7 w-7 p-0 text-muted-foreground hover:bg-danger/10 hover:text-danger"
+                                title="Excluir pedido"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expanded sub-items */}
+                        {isExpanded && (
+                          <tr className="bg-muted/30 border-b border-border/70">
+                            <td colSpan={10} className="px-6 py-3">
+                              <div className="space-y-1.5 text-xs">
+                                <div className="font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                  <ListPlus className="w-3.5 h-3.5 text-warning" />
+                                  Itens do Pedido ({order.items.length})
+                                </div>
+                                <div className="grid grid-cols-1 gap-1.5">
+                                  {order.items.map(subItem => {
+                                    const subProd = products.find(p => p.id === subItem.product_id);
+                                    return (
+                                      <div
+                                        key={subItem.id}
+                                        className="flex items-center justify-between p-2 rounded-lg bg-card border border-border/60 text-xs"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium text-foreground">{subItem.product_name}</span>
+                                          {subProd?.sku && (
+                                            <span className="font-mono text-[10px] bg-muted px-1 rounded text-muted-foreground">
+                                              SKU: {subProd.sku}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-4 text-right">
+                                          <span>{subItem.quantity}x {formatBRL(Number(subItem.unit_price))}</span>
+                                          <span className="font-semibold text-success">{formatBRL(Number(subItem.total_amount))}</span>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => openEdit(subItem)}
+                                            className="h-6 w-6 p-0 hover:bg-primary/10 hover:text-primary"
+                                          >
+                                            <Pencil className="w-3 h-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -663,6 +969,46 @@ export default function Sales() {
                   <Plus className="w-3.5 h-3.5" /> Adicionar Produto
                 </Button>
               </div>
+
+              {/* Shopee Live Simulation Box */}
+              {multiSource === 'shopee' && multiItems.some(it => parseFloat(it.unit_price) > 0) && (
+                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                  className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-1.5 text-xs">
+                  <p className="font-semibold text-warning flex items-center gap-1.5">🛍 Simulação do Pedido Completo (Shopee)</p>
+                  {(() => {
+                    const itemsInput = multiItems.filter(it => parseFloat(it.unit_price) > 0).map(it => {
+                      const prod = products.find(p => p.id === it.product_id);
+                      return {
+                        unitPrice: parseFloat(it.unit_price) || 0,
+                        costPrice: prod?.cost_price ?? 0,
+                        quantity: Number(it.quantity) || 1,
+                      };
+                    });
+                    const profitRes = calcOrderNetProfit(itemsInput, 'shopee');
+                    return (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <span className="text-muted-foreground">Receita total ({itemsInput.length} item/itens)</span>
+                        <span className="text-right font-semibold">{formatBRL(profitRes.revenue)}</span>
+                        <span className="text-muted-foreground">Comissão percentual</span>
+                        <span className="text-right font-semibold text-danger">−{formatBRL(profitRes.shopeePercent)}</span>
+                        <span className="text-muted-foreground">Taxa fixa frete (1x no pedido)</span>
+                        <span className="text-right font-semibold text-danger">−{formatBRL(profitRes.shopeeFixedFee)}</span>
+                        {profitRes.productCost > 0 && (
+                          <>
+                            <span className="text-muted-foreground">Custo total dos produtos</span>
+                            <span className="text-right font-semibold text-danger">−{formatBRL(profitRes.productCost)}</span>
+                          </>
+                        )}
+                        <div className="col-span-2 border-t border-warning/20 my-1" />
+                        <span className="text-muted-foreground font-semibold">Lucro líquido estimado do pedido</span>
+                        <span className={`text-right font-bold ${profitRes.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                          {formatBRL(profitRes.netProfit)} ({profitRes.margin.toFixed(1)}%)
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </motion.div>
+              )}
 
               {/* Summary */}
               <div className="rounded-lg bg-muted/40 border border-border p-3 flex items-center justify-between text-sm">
@@ -836,6 +1182,44 @@ export default function Sales() {
                     <Input value={form.shopee_order_id} onChange={e => setForm(f => ({ ...f, shopee_order_id: e.target.value }))} placeholder="Ex: 2412345678" />
                   </div>
                 )}
+                {form.source === 'shopee' && parseFloat(form.unit_price) > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="col-span-2 rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2"
+                  >
+                    <p className="text-xs font-semibold text-warning flex items-center gap-1.5">🛍 Simulação Shopee</p>
+                    {(() => {
+                      const up = parseFloat(form.unit_price) || 0;
+                      const qty = Number(form.quantity) || 1;
+                      const cp = selectedProduct ? (selectedProduct as Product & { cost_price: number }).cost_price : 0;
+                      const comm = calcShopeeCommission(up, qty);
+                      const profit = calcNetProfit(up, cp, qty, 'shopee');
+                      return (
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                          <span className="text-muted-foreground">Receita total</span>
+                          <span className="text-right font-semibold text-foreground">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(profit.revenue)}</span>
+                          <span className="text-muted-foreground">Comissão ({(comm.tier.percent * 100).toFixed(0)}%)</span>
+                          <span className="text-right font-semibold text-danger">−{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(comm.percentCommission)}</span>
+                          <span className="text-muted-foreground">Taxa fixa (frete)</span>
+                          <span className="text-right font-semibold text-danger">−{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(comm.fixedFee)}</span>
+                          {cp > 0 && (
+                            <>
+                              <span className="text-muted-foreground">Custo produto</span>
+                              <span className="text-right font-semibold text-danger">−{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(profit.productCost)}</span>
+                            </>
+                          )}
+                          <div className="col-span-2 border-t border-warning/20 my-1" />
+                          <span className="text-muted-foreground font-semibold">Lucro líquido</span>
+                          <span className={`text-right font-bold ${profit.netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(profit.netProfit)}
+                            <span className="text-muted-foreground font-normal ml-1">({profit.margin.toFixed(1)}%)</span>
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </motion.div>
+                )}
                 <div className="col-span-2 space-y-1">
                   <Label>Observações</Label>
                   <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Opcional" />
@@ -852,7 +1236,7 @@ export default function Sales() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* Delete Single Item Dialog */}
       <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -862,6 +1246,24 @@ export default function Sales() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
             <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Excluir</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Group Order Dialog */}
+      <Dialog open={!!deleteOrderItems} onOpenChange={() => setDeleteOrderItems(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display text-danger flex items-center gap-2"><Trash2 className="w-5 h-5" /> Excluir Pedido Completo</DialogTitle>
+          </DialogHeader>
+          <p className="text-muted-foreground text-sm">
+            Tem certeza que deseja excluir este pedido com {deleteOrderItems?.length ?? 0} produto(s)? Todos os itens do pedido serão removidos.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOrderItems(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => deleteOrderItems && handleDeleteGroup(deleteOrderItems)}>
+              Excluir {deleteOrderItems?.length ?? 0} Itens
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

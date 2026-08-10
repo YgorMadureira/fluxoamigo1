@@ -4,10 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import {
   LayoutDashboard, ShoppingCart, ShoppingBag, Package, BarChart3,
-  LogOut, Menu, X, ChevronRight, Settings, Shield, Tag, BoxesIcon, Truck
+  LogOut, Menu, X, ChevronRight, Settings, Shield, Tag, BoxesIcon, Truck, Calculator
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import logo from '@/assets/logo-osdevs.jpeg';
+
+import ThemeToggle from '@/components/ThemeToggle';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
@@ -18,6 +20,7 @@ const navItems = [
   { to: '/categories', icon: Tag, label: 'Categorias' },
   { to: '/suppliers', icon: Truck, label: 'Fornecedores' },
   { to: '/reports', icon: BarChart3, label: 'Relatórios' },
+  { to: '/calculator', icon: Calculator, label: 'Calculadora' },
 ];
 
 const adminItems = [
@@ -101,6 +104,15 @@ export default function Sidebar() {
             <div className="text-sidebar-foreground text-xs">{profile?.role ?? 'Usuário'}</div>
           </div>
         </div>
+
+        {/* Theme Toggle Button */}
+        <div className="pt-1">
+          <ThemeToggle
+            variant="outline"
+            className="w-full justify-start text-sidebar-foreground border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-xs font-medium"
+          />
+        </div>
+
         <Button
           variant="ghost"
           size="sm"
@@ -130,9 +142,12 @@ export default function Sidebar() {
             <span className="text-sidebar-foreground text-xs ml-1 opacity-70">— {profile.company_name}</span>
           )}
         </div>
-        <button onClick={() => setMobileOpen(!mobileOpen)} className="text-sidebar-foreground p-1">
-          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle variant="ghost" size="icon" showLabel={false} className="text-sidebar-foreground h-8 w-8" />
+          <button onClick={() => setMobileOpen(!mobileOpen)} className="text-sidebar-foreground p-1">
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile drawer */}

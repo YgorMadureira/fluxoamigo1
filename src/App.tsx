@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { MonthFilterProvider } from "@/hooks/useMonthFilter";
+import { ThemeProvider } from "@/hooks/useTheme";
+
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
@@ -16,38 +18,43 @@ import Products from "./pages/Products";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Suppliers from "./pages/Suppliers";
+import ShopeeCalculator from "./pages/ShopeeCalculator";
 import NotFound from "./pages/NotFound";
+import LandingPage from "./pages/LandingPage";
 import LandingPage from "./pages/LandingPage";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner richColors />
-      <BrowserRouter>
-        <AuthProvider>
-          <MonthFilterProvider>
-            <Routes>
-              <Route path="/landing" element={<LandingPage />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/sales" element={<Sales />} />
-              <Route path="/purchases" element={<Purchases />} />
-              <Route path="/inventory" element={<Inventory />} />
-              <Route path="/inventory/history" element={<InventoryHistory />} />
-              <Route path="/categories" element={<Categories />} />
-              <Route path="/products" element={<Products />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/suppliers" element={<Suppliers />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </MonthFilterProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+    <ThemeProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner richColors />
+        <BrowserRouter>
+          <AuthProvider>
+            <MonthFilterProvider>
+              <Routes>
+                <Route path="/landing" element={<LandingPage />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/sales" element={<Sales />} />
+                <Route path="/purchases" element={<Purchases />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/inventory/history" element={<InventoryHistory />} />
+                <Route path="/categories" element={<Categories />} />
+                <Route path="/products" element={<Products />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/suppliers" element={<Suppliers />} />
+                <Route path="/calculator" element={<ShopeeCalculator />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </MonthFilterProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

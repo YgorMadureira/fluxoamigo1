@@ -35,10 +35,19 @@ const typeLabel: Record<string, { label: string; cls: string }> = {
   adjustment: { label: 'Ajuste Manual', cls: 'text-warning border-warning/30 bg-warning/10' },
   purchase: { label: 'Entrada (Compra)', cls: 'text-success border-success/30 bg-success/10' },
   sale: { label: 'Saída (Venda)', cls: 'text-danger border-danger/30 bg-danger/10' },
+  sale_cancellation: { label: 'Venda Cancelada', cls: 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10' },
 };
 
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+const getSaleCode = (l: LogRow) => {
+  if (l.reference_id && (l.reference_id.startsWith('PED-') || l.reference_id.startsWith('VEN-') || l.reference_id.length >= 6)) {
+    return l.reference_id;
+  }
+  const match = l.justification?.match(/#([A-Za-z0-9-]+)/);
+  return match ? match[1] : null;
+};
 
 export default function InventoryHistory() {
   const { profile } = useAuth();
@@ -101,7 +110,8 @@ export default function InventoryHistory() {
     const matchUser = !filterUser || (l.user_name ?? '').toLowerCase().includes(filterUser.toLowerCase());
     const matchSearch = !search ||
       (l.product_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      (l.justification ?? '').toLowerCase().includes(search.toLowerCase());
+      (l.justification ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (l.reference_id ?? '').toLowerCase().includes(search.toLowerCase());
     return matchProduct && matchUser && matchSearch;
   });
 
@@ -252,7 +262,7 @@ export default function InventoryHistory() {
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar produto ou justificativa..."
+                  placeholder="Buscar produto, justificativa ou ID da venda..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="pl-9 h-9"
@@ -298,7 +308,7 @@ export default function InventoryHistory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    {['Data/Hora', 'Produto', 'Categoria', 'Tipo', 'Antes', 'Variação', 'Depois', 'Impacto (R$)', 'Justificativa', 'Usuário'].map(h => (
+                    {['Data/Hora', 'Produto', 'ID Venda', 'Categoria', 'Tipo', 'Antes', 'Variação', 'Depois', 'Impacto (R$)', 'Justificativa', 'Usuário'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -308,6 +318,7 @@ export default function InventoryHistory() {
                     const t = typeLabel[l.type] ?? { label: l.type, cls: 'text-foreground border-border bg-muted' };
                     const impact = Math.abs(l.quantity_change) * (l.cost_price ?? 0);
                     const isNegative = l.quantity_change < 0;
+                    const saleId = getSaleCode(l);
                     return (
                       <motion.tr
                         key={l.id}
@@ -324,6 +335,15 @@ export default function InventoryHistory() {
                             <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                             {l.product_name}
                           </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {saleId ? (
+                            <span className="font-mono text-xs bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded font-semibold">
+                              #{saleId}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{l.category ?? '—'}</td>
                         <td className="px-4 py-3">

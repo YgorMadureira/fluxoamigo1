@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { calcNetProfit } from '@/lib/shopeeCommission';
 
 interface KpiCard {
   title: string;
@@ -28,6 +29,7 @@ interface ProductProfit {
   qty: number;
   revenue: number;
   cost: number;
+  shopeeCommission: number;
   profit: number;
   margin: number;
   sku: string | null;
@@ -58,7 +60,7 @@ export default function Dashboard() {
         supabase.from('purchases').select('total_amount, purchase_date').eq('company_id', cid).gte('purchase_date', startDate).lte('purchase_date', endDate),
         supabase.from('products').select('id', { count: 'exact', head: true }).eq('company_id', cid),
         supabase.from('shop_configs').select('partner_id, shop_id').eq('company_id', cid).maybeSingle(),
-        supabase.from('sales').select('product_id, product_name, quantity, unit_price, total_amount').eq('company_id', cid).gte('sale_date', startDate).lte('sale_date', endDate),
+        supabase.from('sales').select('id, product_id, product_name, quantity, unit_price, total_amount, source, shopee_order_id').eq('company_id', cid).gte('sale_date', startDate).lte('sale_date', endDate),
         supabase.from('products').select('id, sku, cost_price').eq('company_id', cid),
       ]);
 
@@ -78,29 +80,68 @@ export default function Dashboard() {
         productsMap.set(p.id, { sku: p.sku, cost_price: p.cost_price });
       });
 
+      interface RawSale {
+        id: string;
+        product_id: string | null;
+        product_name: string;
+        quantity: number;
+        unit_price: number;
+        total_amount: number;
+        source: string;
+        shopee_order_id: string | null;
+      }
+
+      const orderMap = new Map<string, RawSale[]>();
+      ((salesDetailRes.data as unknown as RawSale[]) ?? []).forEach(s => {
+        const orderKey = s.shopee_order_id || s.id;
+        const list = orderMap.get(orderKey) ?? [];
+        list.push(s);
+        orderMap.set(orderKey, list);
+      });
+
       const profitMap = new Map<string, ProductProfit>();
-      (salesDetailRes.data ?? []).forEach((s: { product_id: string | null; product_name: string; quantity: number; unit_price: number; total_amount: number }) => {
-        const key = s.product_id ?? s.product_name;
-        const existing = profitMap.get(key) ?? {
-          product_id: s.product_id,
-          product_name: s.product_name,
-          qty: 0,
-          revenue: 0,
-          cost: 0,
-          profit: 0,
-          margin: 0,
-          sku: s.product_id ? (productsMap.get(s.product_id)?.sku ?? null) : null,
-        };
-        const costPrice = s.product_id ? (productsMap.get(s.product_id)?.cost_price ?? 0) : 0;
-        const qty = Number(s.quantity);
-        const revenue = Number(s.total_amount);
-        const cost = costPrice * qty;
-        existing.qty += qty;
-        existing.revenue += revenue;
-        existing.cost += cost;
-        existing.profit = existing.revenue - existing.cost;
-        existing.margin = existing.revenue > 0 ? (existing.profit / existing.revenue) * 100 : 0;
-        profitMap.set(key, existing);
+
+      orderMap.forEach(orderItems => {
+        const first = orderItems[0];
+        const itemsInput = orderItems.map(it => ({
+          unitPrice: Number(it.unit_price),
+          costPrice: it.product_id ? (productsMap.get(it.product_id)?.cost_price ?? 0) : 0,
+          quantity: Number(it.quantity),
+        }));
+
+        const orderProfit = calcOrderNetProfit(itemsInput, first.source);
+
+        orderItems.forEach(s => {
+          const key = s.product_id ?? s.product_name;
+          const existing = profitMap.get(key) ?? {
+            product_id: s.product_id,
+            product_name: s.product_name,
+            qty: 0,
+            revenue: 0,
+            cost: 0,
+            shopeeCommission: 0,
+            profit: 0,
+            margin: 0,
+            sku: s.product_id ? (productsMap.get(s.product_id)?.sku ?? null) : null,
+          };
+
+          const costPrice = s.product_id ? (productsMap.get(s.product_id)?.cost_price ?? 0) : 0;
+          const qty = Number(s.quantity);
+          const revenue = Number(s.total_amount);
+          const itemCost = costPrice * qty;
+
+          const itemPortion = orderProfit.revenue > 0 ? (revenue / orderProfit.revenue) : (1 / orderItems.length);
+          const itemCommission = orderProfit.shopeeCommission * itemPortion;
+
+          existing.qty += qty;
+          existing.revenue += revenue;
+          existing.cost += itemCost;
+          existing.shopeeCommission += itemCommission;
+          existing.profit = existing.revenue - existing.cost - existing.shopeeCommission;
+          existing.margin = existing.revenue > 0 ? (existing.profit / existing.revenue) * 100 : 0;
+
+          profitMap.set(key, existing);
+        });
       });
 
       const sortedProfits = Array.from(profitMap.values()).sort((a, b) => b.profit - a.profit);
@@ -142,7 +183,7 @@ export default function Dashboard() {
     {
       title: 'Lucro nas Vendas',
       value: formatBRL(totalProductProfit),
-      change: totalProductProfit >= 0 ? `Margem: ${realMargin}%` : 'Resultado Negativo',
+      change: totalProductProfit >= 0 ? `Margem: ${realMargin}% (já descontadas taxas Shopee)` : 'Resultado Negativo',
       positive: totalProductProfit >= 0,
       icon: totalProductProfit >= 0 ? TrendingUp : TrendingDown,
       gradient: totalProductProfit >= 0 ? 'gradient-success' : 'gradient-danger',
@@ -343,7 +384,7 @@ export default function Dashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {['#', 'Produto', 'SKU', 'Qtd Vendida', 'Receita', 'Custo Total', 'Lucro', 'Margem'].map(h => (
+                    {['#', 'Produto', 'SKU', 'Qtd Vendida', 'Receita', 'Custo Total', 'Taxas Shopee', 'Lucro', 'Margem'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -368,6 +409,12 @@ export default function Dashboard() {
                       <td className="px-4 py-3 text-right text-success font-semibold">{formatBRL(p.revenue)}</td>
                       <td className="px-4 py-3 text-right text-danger">{formatBRL(p.cost)}</td>
                       <td className="px-4 py-3 text-right">
+                        {p.shopeeCommission > 0
+                          ? <span className="text-warning font-semibold">{formatBRL(p.shopeeCommission)}</span>
+                          : <span className="text-muted-foreground text-xs">—</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3 text-right">
                         <span className={`font-bold ${p.profit >= 0 ? 'text-success' : 'text-danger'}`}>
                           {formatBRL(p.profit)}
                         </span>
@@ -390,6 +437,7 @@ export default function Dashboard() {
                     <td className="px-4 py-3 text-center font-bold">{productProfits.reduce((s, p) => s + p.qty, 0)}</td>
                     <td className="px-4 py-3 text-right font-bold text-success">{formatBRL(productProfits.reduce((s, p) => s + p.revenue, 0))}</td>
                     <td className="px-4 py-3 text-right font-bold text-danger">{formatBRL(productProfits.reduce((s, p) => s + p.cost, 0))}</td>
+                    <td className="px-4 py-3 text-right font-bold text-warning">{formatBRL(productProfits.reduce((s, p) => s + p.shopeeCommission, 0))}</td>
                     <td className="px-4 py-3 text-right font-bold">
                       <span className={totalProductProfit >= 0 ? 'text-success' : 'text-danger'}>{formatBRL(totalProductProfit)}</span>
                     </td>

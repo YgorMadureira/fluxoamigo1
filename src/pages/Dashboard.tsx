@@ -85,11 +85,25 @@ export default function Dashboard() {
         const sc = (shopeeRes as { data: { partner_id?: string | null; shop_id?: string | null } | null })?.data;
         setShopeeConfigured(!!(sc?.partner_id && sc?.shop_id));
 
-        // Build profit per product
+        // Build profit per product with ID and Name lookup fallback
         const productsMap = new Map<string, { sku: string | null; cost_price: number }>();
-        (productsDetailRes.data ?? []).forEach((p: { id: string; sku: string | null; cost_price: number }) => {
-          productsMap.set(p.id, { sku: p.sku ?? null, cost_price: Number(p.cost_price || 0) });
+        const productsByNameMap = new Map<string, { id: string; sku: string | null; cost_price: number }>();
+
+        (productsDetailRes.data ?? []).forEach((p: { id: string; sku: string | null; cost_price: number; name?: string }) => {
+          const costPrice = Number(p.cost_price || 0);
+          productsMap.set(p.id, { sku: p.sku ?? null, cost_price: costPrice });
         });
+
+        const getProdInfo = (id: string | null, name: string) => {
+          if (id && productsMap.has(id)) {
+            return productsMap.get(id)!;
+          }
+          const cleanName = name.toLowerCase().trim();
+          if (productsByNameMap.has(cleanName)) {
+            return productsByNameMap.get(cleanName)!;
+          }
+          return { sku: null, cost_price: 0 };
+        };
 
         interface RawSale {
           id: string;
@@ -118,14 +132,15 @@ export default function Dashboard() {
 
           const itemsInput = orderItems.map(it => ({
             unitPrice: Number(it.unit_price || 0),
-            costPrice: it.product_id ? (productsMap.get(it.product_id)?.cost_price ?? 0) : 0,
+            costPrice: getProdInfo(it.product_id, it.product_name).cost_price,
             quantity: Number(it.quantity || 1),
           }));
 
           const orderProfit = calcOrderNetProfit(itemsInput, first.source);
 
           orderItems.forEach(s => {
-            const key = s.product_id ?? s.product_name;
+            const key = s.product_id ?? s.product_name.toLowerCase().trim();
+            const prodInfo = getProdInfo(s.product_id, s.product_name);
             const existing = profitMap.get(key) ?? {
               product_id: s.product_id,
               product_name: s.product_name,
@@ -135,10 +150,10 @@ export default function Dashboard() {
               shopeeCommission: 0,
               profit: 0,
               margin: 0,
-              sku: s.product_id ? (productsMap.get(s.product_id)?.sku ?? null) : null,
+              sku: prodInfo.sku,
             };
 
-            const costPrice = s.product_id ? (productsMap.get(s.product_id)?.cost_price ?? 0) : 0;
+            const costPrice = prodInfo.cost_price;
             const qty = Number(s.quantity || 0);
             const revenue = Number(s.total_amount || 0);
             const itemCost = costPrice * qty;
@@ -339,7 +354,7 @@ export default function Dashboard() {
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
+                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={v => v === 0 ? 'R$0' : Math.abs(v) >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`} />
                 <Tooltip
                   contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
                   formatter={(v: number) => formatBRL(v)}
@@ -365,7 +380,7 @@ export default function Dashboard() {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
+                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={v => v === 0 ? 'R$0' : Math.abs(v) >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`} />
                 <Tooltip
                   contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
                   formatter={(v: number) => formatBRL(v)}

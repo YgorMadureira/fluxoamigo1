@@ -1,16 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import Layout from '@/components/Layout';
-import MonthFilterSelect from '@/components/MonthFilterSelect';
-import { useMonthFilter } from '@/hooks/useMonthFilter';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { BarChart3, TrendingUp, TrendingDown, DollarSign, Loader2, Trophy } from 'lucide-react';
+import { BarChart3, TrendingUp, TrendingDown, DollarSign, Loader2, Trophy, Calendar, Filter, ShoppingBag } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, PieChart, Pie, Cell
 } from 'recharts';
-import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const formatBRL = (v: number) =>
@@ -29,187 +28,335 @@ const COLORS = [
 
 interface SaleRow { product_id: string | null; product_name: string; quantity: number; total_amount: number; sale_date: string }
 interface PurchaseRow { total_amount: number; purchase_date: string; category: string }
-interface ProductDetail { id: string; sku: string | null; cost_price: number }
+interface ProductDetail { id: string; name: string; sku: string | null; cost_price: number }
+
+const MONTH_NAMES = [
+  { value: 'all', label: 'Todos os meses' },
+  { value: '1', label: 'Janeiro' },
+  { value: '2', label: 'Fevereiro' },
+  { value: '3', label: 'Março' },
+  { value: '4', label: 'Abril' },
+  { value: '5', label: 'Maio' },
+  { value: '6', label: 'Junho' },
+  { value: '7', label: 'Julho' },
+  { value: '8', label: 'Agosto' },
+  { value: '9', label: 'Setembro' },
+  { value: '10', label: 'Outubro' },
+  { value: '11', label: 'Novembro' },
+  { value: '12', label: 'Dezembro' },
+];
 
 export default function Reports() {
-  const { profile } = useAuth();
-  const { startDate, endDate, selectedMonth } = useMonthFilter();
+  const { profile, loading: authLoading } = useAuth();
   const [sales, setSales] = useState<SaleRow[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
   const [productsDetail, setProductsDetail] = useState<ProductDetail[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!profile?.company_id) return;
-    async function fetchAll() {
-      setLoading(true);
-      const cid = profile!.company_id;
-      // Load 3 months for DRE comparison: 2 months back to current end
-      const start3 = format(startOfMonth(addMonths(selectedMonth, -2)), 'yyyy-MM-dd');
+  // Filters: Year and Month
+  const [selectedYear, setSelectedYear] = useState<string>(() => String(new Date().getFullYear()));
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>(() => String(new Date().getMonth() + 1));
 
-      const [salesRes, purchasesRes, productsRes] = await Promise.all([
-        supabase.from('sales').select('product_id, product_name, quantity, total_amount, sale_date').eq('company_id', cid).gte('sale_date', start3).lte('sale_date', endDate),
-        supabase.from('purchases').select('total_amount, purchase_date, category').eq('company_id', cid).gte('purchase_date', start3).lte('purchase_date', endDate),
-        supabase.from('products').select('id, sku, cost_price').eq('company_id', cid),
-      ]);
-      setSales(salesRes.data ?? []);
-      setPurchases(purchasesRes.data ?? []);
-      setProductsDetail((productsRes.data ?? []) as ProductDetail[]);
-      setLoading(false);
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchAll() {
+      if (!profile?.company_id) {
+        if (!authLoading && isMounted) setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const cid = profile.company_id;
+        const [salesRes, purchasesRes, productsRes] = await Promise.all([
+          supabase.from('sales').select('product_id, product_name, quantity, total_amount, sale_date').eq('company_id', cid).order('sale_date', { ascending: true }),
+          supabase.from('purchases').select('total_amount, purchase_date, category').eq('company_id', cid).order('purchase_date', { ascending: true }),
+          supabase.from('products').select('id, name, sku, cost_price').eq('company_id', cid),
+        ]);
+
+        if (!isMounted) return;
+        setSales((salesRes.data as SaleRow[]) ?? []);
+        setPurchases((purchasesRes.data as PurchaseRow[]) ?? []);
+        setProductsDetail((productsRes.data as ProductDetail[]) ?? []);
+      } catch (err) {
+        console.error('[Reports] Error fetching data:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     }
     fetchAll();
-  }, [startDate, endDate, selectedMonth, profile]);
+    return () => { isMounted = false; };
+  }, [profile, authLoading]);
 
-  // DRE: monthly breakdown for selected month and 2 preceding months
-  const dreMonths = [-2, -1, 0].map(offset => {
-    const d = addMonths(selectedMonth, offset);
-    const start = format(startOfMonth(d), 'yyyy-MM-dd');
-    const end = format(endOfMonth(d), 'yyyy-MM-dd');
-    const label = format(d, "MMM/yy", { locale: ptBR });
-    const receita = sales.filter(s => s.sale_date >= start && s.sale_date <= end).reduce((a, b) => a + Number(b.total_amount), 0);
-    const custos = purchases.filter(p => p.purchase_date >= start && p.purchase_date <= end).reduce((a, b) => a + Number(b.total_amount), 0);
-    const lucro = receita - custos;
+  // Product cost mapping (by ID and by exact name)
+  const { prodDetailMap, prodByNameMap } = useMemo(() => {
+    const byId = new Map<string, ProductDetail>();
+    const byName = new Map<string, ProductDetail>();
+    productsDetail.forEach(p => {
+      byId.set(p.id, p);
+      if (p.name) byName.set(p.name.toLowerCase().trim(), p);
+    });
+    return { prodDetailMap: byId, prodByNameMap: byName };
+  }, [productsDetail]);
+
+  const getProductCost = (id: string | null, name: string) => {
+    if (id && prodDetailMap.has(id)) return Number(prodDetailMap.get(id)!.cost_price || 0);
+    const cleanName = name.toLowerCase().trim();
+    if (prodByNameMap.has(cleanName)) return Number(prodByNameMap.get(cleanName)!.cost_price || 0);
+    return 0;
+  };
+
+  const getProductSku = (id: string | null, name: string) => {
+    if (id && prodDetailMap.has(id)) return prodDetailMap.get(id)!.sku;
+    const cleanName = name.toLowerCase().trim();
+    if (prodByNameMap.has(cleanName)) return prodByNameMap.get(cleanName)!.sku;
+    return null;
+  };
+
+  // Filter sales and purchases according to Year and Month filters
+  const filteredSales = useMemo(() => {
+    return sales.filter(s => {
+      if (!s.sale_date) return false;
+      const d = parseISO(s.sale_date);
+      if (isNaN(d.getTime())) return false;
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+
+      const matchYear = selectedYear === 'all' || y === Number(selectedYear);
+      const matchMonth = selectedMonthFilter === 'all' || m === Number(selectedMonthFilter);
+      return matchYear && matchMonth;
+    });
+  }, [sales, selectedYear, selectedMonthFilter]);
+
+  const filteredPurchases = useMemo(() => {
+    return purchases.filter(p => {
+      if (!p.purchase_date) return false;
+      const d = parseISO(p.purchase_date);
+      if (isNaN(d.getTime())) return false;
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+
+      const matchYear = selectedYear === 'all' || y === Number(selectedYear);
+      const matchMonth = selectedMonthFilter === 'all' || m === Number(selectedMonthFilter);
+      return matchYear && matchMonth;
+    });
+  }, [purchases, selectedYear, selectedMonthFilter]);
+
+  // DRE Monthly Cards Breakdown (last 3 months or per selected range)
+  const dreMonths = useMemo(() => {
+    if (selectedYear !== 'all' && selectedMonthFilter !== 'all') {
+      // 3 consecutive months ending at selected month/year
+      const yearNum = Number(selectedYear);
+      const monthNum = Number(selectedMonthFilter) - 1; // 0-indexed
+      const targetDate = new Date(yearNum, monthNum, 1);
+
+      return [-2, -1, 0].map(offset => {
+        const d = subMonths(targetDate, -offset);
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        const label = format(d, "MMM/yy", { locale: ptBR });
+
+        const mSales = sales.filter(s => {
+          const sd = parseISO(s.sale_date);
+          return sd.getFullYear() === y && (sd.getMonth() + 1) === m;
+        });
+
+        const mPurchases = purchases.filter(p => {
+          const pd = parseISO(p.purchase_date);
+          return pd.getFullYear() === y && (pd.getMonth() + 1) === m;
+        });
+
+        const receita = mSales.reduce((a, b) => a + Number(b.total_amount || 0), 0);
+        const cpv = mSales.reduce((a, b) => a + (getProductCost(b.product_id, b.product_name) * Number(b.quantity || 1)), 0);
+        const comprasEstoque = mPurchases.reduce((a, b) => a + Number(b.total_amount || 0), 0);
+        const lucro = receita - cpv;
+        const margem = receita > 0 ? ((lucro / receita) * 100).toFixed(1) : '0.0';
+
+        return { label, receita, cpv, comprasEstoque, lucro, margem };
+      });
+    }
+
+    // "Todos os meses" or "Todos os anos": Summarize overall filtered period
+    const receita = filteredSales.reduce((a, b) => a + Number(b.total_amount || 0), 0);
+    const cpv = filteredSales.reduce((a, b) => a + (getProductCost(b.product_id, b.product_name) * Number(b.quantity || 1)), 0);
+    const comprasEstoque = filteredPurchases.reduce((a, b) => a + Number(b.total_amount || 0), 0);
+    const lucro = receita - cpv;
     const margem = receita > 0 ? ((lucro / receita) * 100).toFixed(1) : '0.0';
-    return { label, receita, custos, lucro, margem };
-  });
 
-  // Profit per product (selected month only)
-  const prodDetailMap = new Map(productsDetail.map(p => [p.id, p]));
-  const profitByProductMap = new Map<string, { product_id: string | null; product_name: string; qty: number; revenue: number; cost: number; sku: string | null }>();
-  sales
-    .filter(s => s.sale_date >= startDate && s.sale_date <= endDate)
-    .forEach(s => {
-      const key = s.product_id ?? s.product_name;
-      const existing = profitByProductMap.get(key) ?? {
+    const periodLabel = selectedYear === 'all' && selectedMonthFilter === 'all'
+      ? 'Todo o Período'
+      : selectedYear === 'all'
+      ? `${MONTH_NAMES.find(m => m.value === selectedMonthFilter)?.label} (Todos os anos)`
+      : `Ano ${selectedYear}`;
+
+    return [{ label: periodLabel, receita, cpv, comprasEstoque, lucro, margem }];
+  }, [sales, purchases, selectedYear, selectedMonthFilter, prodDetailMap, prodByNameMap]);
+
+  // Profit per product for filtered selection
+  const profitByProduct = useMemo(() => {
+    const profitMap = new Map<string, { product_id: string | null; product_name: string; qty: number; revenue: number; cost: number; sku: string | null }>();
+
+    filteredSales.forEach(s => {
+      const key = s.product_id ?? s.product_name.toLowerCase().trim();
+      const costPrice = getProductCost(s.product_id, s.product_name);
+      const sku = getProductSku(s.product_id, s.product_name);
+
+      const existing = profitMap.get(key) ?? {
         product_id: s.product_id,
         product_name: s.product_name,
         qty: 0,
         revenue: 0,
         cost: 0,
-        sku: s.product_id ? (prodDetailMap.get(s.product_id)?.sku ?? null) : null,
+        sku,
       };
-      const costPrice = s.product_id ? (prodDetailMap.get(s.product_id)?.cost_price ?? 0) : 0;
-      existing.qty += Number(s.quantity);
-      existing.revenue += Number(s.total_amount);
-      existing.cost += costPrice * Number(s.quantity);
-      profitByProductMap.set(key, existing);
+
+      const qty = Number(s.quantity || 0);
+      const revenue = Number(s.total_amount || 0);
+      existing.qty += qty;
+      existing.revenue += revenue;
+      existing.cost += costPrice * qty;
+
+      profitMap.set(key, existing);
     });
 
-  const profitByProduct = Array.from(profitByProductMap.values())
-    .map(p => ({
-      ...p,
-      profit: p.revenue - p.cost,
-      margin: p.revenue > 0 ? ((p.revenue - p.cost) / p.revenue) * 100 : 0,
-    }))
-    .sort((a, b) => b.profit - a.profit);
+    return Array.from(profitMap.values())
+      .map(p => ({
+        ...p,
+        profit: p.revenue - p.cost,
+        margin: p.revenue > 0 ? ((p.revenue - p.cost) / p.revenue) * 100 : 0,
+      }))
+      .sort((a, b) => b.profit - a.profit);
+  }, [filteredSales, prodDetailMap, prodByNameMap]);
 
-  const totalProfitByProduct = profitByProduct.reduce((s, p) => s + p.profit, 0);
-  const totalRevByProduct = profitByProduct.reduce((s, p) => s + p.revenue, 0);
-  const totalCostByProduct = profitByProduct.reduce((s, p) => s + p.cost, 0);
-  const totalQtyByProduct = profitByProduct.reduce((s, p) => s + p.qty, 0);
+  const totalProfitByProduct = useMemo(() => profitByProduct.reduce((s, p) => s + p.profit, 0), [profitByProduct]);
+  const totalRevByProduct = useMemo(() => profitByProduct.reduce((s, p) => s + p.revenue, 0), [profitByProduct]);
+  const totalCostByProduct = useMemo(() => profitByProduct.reduce((s, p) => s + p.cost, 0), [profitByProduct]);
+  const totalQtyByProduct = useMemo(() => profitByProduct.reduce((s, p) => s + p.qty, 0), [profitByProduct]);
 
-
-  // ABC Curve: aggregate by product from the SELECTED MONTH only
-  const productMap = new Map<string, { qty: number; revenue: number }>();
-  sales
-    .filter(s => s.sale_date >= startDate && s.sale_date <= endDate)
-    .forEach(s => {
+  // ABC Curve by Revenue
+  const abcData = useMemo(() => {
+    const productMap = new Map<string, { qty: number; revenue: number }>();
+    filteredSales.forEach(s => {
       const prev = productMap.get(s.product_name) ?? { qty: 0, revenue: 0 };
       productMap.set(s.product_name, {
-        qty: prev.qty + Number(s.quantity),
-        revenue: prev.revenue + Number(s.total_amount),
+        qty: prev.qty + Number(s.quantity || 0),
+        revenue: prev.revenue + Number(s.total_amount || 0),
       });
     });
 
-  const totalRevForABC = Array.from(productMap.values()).reduce((a, b) => a + b.revenue, 0);
-  const totalQtyForABC = Array.from(productMap.values()).reduce((a, b) => a + b.qty, 0);
+    const totalRev = Array.from(productMap.values()).reduce((a, b) => a + b.revenue, 0);
+    const totalQty = Array.from(productMap.values()).reduce((a, b) => a + b.qty, 0);
 
-  // ABC by Revenue
-  let cumRevenuePercent = 0;
-  const abcData = Array.from(productMap.entries())
-    .sort((a, b) => b[1].revenue - a[1].revenue)
-    .slice(0, 20)
-    .map(([name, v]) => {
-      const pct = totalRevForABC > 0 ? (v.revenue / totalRevForABC) * 100 : 0;
-      cumRevenuePercent += pct;
-      const curve = cumRevenuePercent <= 80 ? 'A' : cumRevenuePercent <= 95 ? 'B' : 'C';
-      const qtyPct = totalQtyForABC > 0 ? ((v.qty / totalQtyForABC) * 100).toFixed(1) : '0.0';
-      return {
-        name: name.length > 22 ? name.slice(0, 22) + '…' : name,
-        qty: v.qty,
-        revenue: v.revenue,
-        pct: pct.toFixed(1),
-        cumPct: cumRevenuePercent.toFixed(1),
-        qtyPct,
-        curve,
-      };
+    let cumRevenuePercent = 0;
+    return Array.from(productMap.entries())
+      .sort((a, b) => b[1].revenue - a[1].revenue)
+      .slice(0, 20)
+      .map(([name, v]) => {
+        const pct = totalRev > 0 ? (v.revenue / totalRev) * 100 : 0;
+        cumRevenuePercent += pct;
+        const curve = cumRevenuePercent <= 80 ? 'A' : cumRevenuePercent <= 95 ? 'B' : 'C';
+        const qtyPct = totalQty > 0 ? ((v.qty / totalQty) * 100).toFixed(1) : '0.0';
+        return {
+          name: name.length > 22 ? name.slice(0, 22) + '…' : name,
+          qty: v.qty,
+          revenue: v.revenue,
+          pct: pct.toFixed(1),
+          cumPct: cumRevenuePercent.toFixed(1),
+          qtyPct,
+          curve,
+        };
+      });
+  }, [filteredSales]);
+
+  // ABC Curve by Quantity
+  const abcQtyData = useMemo(() => {
+    const productMap = new Map<string, { qty: number; revenue: number }>();
+    filteredSales.forEach(s => {
+      const prev = productMap.get(s.product_name) ?? { qty: 0, revenue: 0 };
+      productMap.set(s.product_name, {
+        qty: prev.qty + Number(s.quantity || 0),
+        revenue: prev.revenue + Number(s.total_amount || 0),
+      });
     });
 
-  // ABC by Quantity
-  let cumQtyPercent = 0;
-  const abcQtyData = Array.from(productMap.entries())
-    .sort((a, b) => b[1].qty - a[1].qty)
-    .slice(0, 20)
-    .map(([name, v]) => {
-      const pct = totalQtyForABC > 0 ? (v.qty / totalQtyForABC) * 100 : 0;
-      cumQtyPercent += pct;
-      const curve = cumQtyPercent <= 80 ? 'A' : cumQtyPercent <= 95 ? 'B' : 'C';
-      const revPct = totalRevForABC > 0 ? ((v.revenue / totalRevForABC) * 100).toFixed(1) : '0.0';
-      return {
-        name: name.length > 22 ? name.slice(0, 22) + '…' : name,
-        qty: v.qty,
-        revenue: v.revenue,
-        pct: pct.toFixed(1),
-        cumPct: cumQtyPercent.toFixed(1),
-        revPct,
-        curve,
-      };
+    const totalRev = Array.from(productMap.values()).reduce((a, b) => a + b.revenue, 0);
+    const totalQty = Array.from(productMap.values()).reduce((a, b) => a + b.qty, 0);
+
+    let cumQtyPercent = 0;
+    return Array.from(productMap.entries())
+      .sort((a, b) => b[1].qty - a[1].qty)
+      .slice(0, 20)
+      .map(([name, v]) => {
+        const pct = totalQty > 0 ? (v.qty / totalQty) * 100 : 0;
+        cumQtyPercent += pct;
+        const curve = cumQtyPercent <= 80 ? 'A' : cumQtyPercent <= 95 ? 'B' : 'C';
+        const revPct = totalRev > 0 ? ((v.revenue / totalRev) * 100).toFixed(1) : '0.0';
+        return {
+          name: name.length > 22 ? name.slice(0, 22) + '…' : name,
+          qty: v.qty,
+          revenue: v.revenue,
+          pct: pct.toFixed(1),
+          cumPct: cumQtyPercent.toFixed(1),
+          revPct,
+          curve,
+        };
+      });
+  }, [filteredSales]);
+
+  // Purchases category breakdown
+  const catData = useMemo(() => {
+    const catMap = new Map<string, number>();
+    filteredPurchases.forEach(p => {
+      catMap.set(p.category, (catMap.get(p.category) ?? 0) + Number(p.total_amount || 0));
     });
+    return Array.from(catMap.entries()).map(([name, value]) => ({ name, value }));
+  }, [filteredPurchases]);
 
-  // Cash flow projection: selected month + next month
-  const nextMonthEnd = endOfMonth(addMonths(selectedMonth, 1));
-  const days = eachDayOfInterval({ start: parseISO(startDate), end: nextMonthEnd });
-  const now = new Date();
-
-  const avgDailySales = sales.filter(s => s.sale_date >= startDate && s.sale_date <= endDate).length > 0
-    ? sales.filter(s => s.sale_date >= startDate && s.sale_date <= endDate).reduce((a, b) => a + Number(b.total_amount), 0) / days.filter(d => d <= now).length || 1
-    : 0;
-
-  const projectionData = days.map((day) => {
-    const key = format(day, 'yyyy-MM-dd');
-    const isHistory = day <= now;
-    const actualSales = sales.filter(s => s.sale_date === key).reduce((a, b) => a + Number(b.total_amount), 0);
-    const actualCosts = purchases.filter(p => p.purchase_date === key).reduce((a, b) => a + Number(b.total_amount), 0);
-    return {
-      date: format(day, 'dd/MM'),
-      vendas: isHistory ? (actualSales || null) : null,
-      custos: isHistory ? (actualCosts || null) : null,
-      projecao: !isHistory ? Math.round(avgDailySales * (0.9 + Math.random() * 0.2)) : null,
-    };
-  }).filter((_, i) => i % 2 === 0);
-
-  // Pie breakdown purchases by category (selected month)
-  const catMap = new Map<string, number>();
-  purchases.filter(p => p.purchase_date >= startDate && p.purchase_date <= endDate).forEach(p => {
-    catMap.set(p.category, (catMap.get(p.category) ?? 0) + Number(p.total_amount));
-  });
-  const catData = Array.from(catMap.entries()).map(([name, value]) => ({ name, value }));
-
-  const curMonth = dreMonths[2];
-  const monthLabel = format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR });
+  const yearOptions = ['all', '2026', '2025', '2024', '2023'];
 
   return (
     <Layout>
       <div className="p-6 lg:p-8 space-y-8">
-        {/* Header */}
+        {/* Header with Year and Month Selectors */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
               <BarChart3 className="w-6 h-6 text-primary" /> Relatórios & BI
             </h1>
-            <p className="text-muted-foreground text-sm mt-1 capitalize">Análise de desempenho — {monthLabel}</p>
+            <p className="text-muted-foreground text-sm mt-1">Análise de desempenho financeiro e produtos</p>
           </div>
-          <MonthFilterSelect />
+
+          {/* Dynamic Filter Controls */}
+          <div className="flex flex-wrap items-center gap-2 bg-card border border-border p-1.5 rounded-xl shadow-sm">
+            <div className="flex items-center gap-1.5 px-2 text-xs font-semibold text-muted-foreground uppercase">
+              <Filter className="w-3.5 h-3.5 text-primary" /> Período:
+            </div>
+
+            {/* Select Ano */}
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger className="h-8 w-36 text-xs font-medium bg-background border-border">
+                <SelectValue placeholder="Ano" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os anos</SelectItem>
+                <SelectItem value="2026">2026</SelectItem>
+                <SelectItem value="2025">2025</SelectItem>
+                <SelectItem value="2024">2024</SelectItem>
+                <SelectItem value="2023">2023</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Select Mês */}
+            <Select value={selectedMonthFilter} onValueChange={setSelectedMonthFilter}>
+              <SelectTrigger className="h-8 w-40 text-xs font-medium bg-background border-border">
+                <SelectValue placeholder="Mês" />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTH_NAMES.map(m => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {loading ? (
@@ -223,30 +370,36 @@ export default function Reports() {
               <h2 className="text-lg font-display font-semibold text-foreground mb-4 flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-success" /> DRE — Demonstrativo de Resultado
               </h2>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+              <div className={`grid grid-cols-1 ${dreMonths.length > 1 ? 'lg:grid-cols-3' : 'lg:grid-cols-1'} gap-4 mb-6`}>
                 {dreMonths.map((m, i) => (
                   <motion.div
                     key={m.label}
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.1 }}
-                    className={`bg-card border rounded-xl p-5 shadow-card ${i === 2 ? 'border-primary/30 ring-1 ring-primary/20' : 'border-border'}`}
+                    className={`bg-card border rounded-xl p-5 shadow-card ${i === dreMonths.length - 1 ? 'border-primary/30 ring-1 ring-primary/20' : 'border-border'}`}
                   >
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-semibold text-muted-foreground capitalize">{m.label}</span>
-                      {i === 2 && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">Selecionado</span>}
+                      {i === dreMonths.length - 1 && <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">Período Ativo</span>}
                     </div>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between"><span className="text-muted-foreground">Receita Bruta</span><span className="font-semibold text-success">{formatBRL(m.receita)}</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">(-) Custos/Desp.</span><span className="font-semibold text-danger">{formatBRL(m.custos)}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">(-) Custo dos Prod. Vendidos (CPV)</span><span className="font-semibold text-danger">{formatBRL(m.cpv)}</span></div>
                       <div className="border-t border-border pt-2 flex justify-between">
-                        <span className="font-semibold text-foreground">Lucro Líquido</span>
+                        <span className="font-semibold text-foreground">Lucro Bruto (Vendas)</span>
                         <span className={`font-bold ${m.lucro >= 0 ? 'text-success' : 'text-danger'}`}>{formatBRL(m.lucro)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Lucratividade</span>
+                        <span className="text-muted-foreground">Margem de Lucro</span>
                         <span className={`font-semibold ${Number(m.margem) >= 0 ? 'text-success' : 'text-danger'}`}>{m.margem}%</span>
                       </div>
+                      {m.comprasEstoque > 0 && (
+                        <div className="pt-2 border-t border-border/40 flex justify-between text-xs text-muted-foreground">
+                          <span>Comprar para Estoque (Investimento)</span>
+                          <span className="font-mono text-warning">{formatBRL(m.comprasEstoque)}</span>
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -254,27 +407,27 @@ export default function Reports() {
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <div className="bg-card border border-border rounded-xl p-6 shadow-card">
-                  <h3 className="text-sm font-semibold text-foreground mb-4">Receita vs. Custos vs. Lucro (3 meses)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
+                  <h3 className="text-sm font-semibold text-foreground mb-4">Receita vs. CPV vs. Lucro</h3>
+                  <ResponsiveContainer width="100%" height={230}>
                     <BarChart data={dreMonths}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-                      <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
+                      <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickFormatter={v => v === 0 ? 'R$0' : Math.abs(v) >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`} />
                       <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} formatter={(v: number) => formatBRL(v)} />
                       <Legend />
                       <Bar dataKey="receita" name="Receita" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="custos" name="Custos" fill="hsl(var(--chart-4))" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="cpv" name="Custo dos Prod. (CPV)" fill="hsl(var(--chart-4))" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="lucro" name="Lucro" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
 
                 <div className="bg-card border border-border rounded-xl p-6 shadow-card">
-                  <h3 className="text-sm font-semibold text-foreground mb-4">Distribuição de Custos — {format(selectedMonth, 'MMM/yy', { locale: ptBR })}</h3>
+                  <h3 className="text-sm font-semibold text-foreground mb-4">Distribuição de Compras de Estoque por Categoria</h3>
                   {catData.length === 0 ? (
                     <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">Sem dados de compras neste período</div>
                   ) : (
-                    <ResponsiveContainer width="100%" height={220}>
+                    <ResponsiveContainer width="100%" height={230}>
                       <PieChart>
                         <Pie data={catData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
                           {catData.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
@@ -344,7 +497,7 @@ export default function Reports() {
                 </div>
 
                 <div className="bg-card border border-border rounded-xl p-6 shadow-card">
-                  <h3 className="text-sm font-semibold text-foreground mb-4">Top 10 Produtos — Faturamento (Barras Verticais)</h3>
+                  <h3 className="text-sm font-semibold text-foreground mb-4">Top 10 Produtos — Faturamento</h3>
                   {abcData.length === 0 ? (
                     <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">Sem dados de vendas neste período</div>
                   ) : (
@@ -352,7 +505,7 @@ export default function Reports() {
                       <BarChart data={abcData.slice(0, 10)} margin={{ top: 10, right: 10, bottom: 60, left: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                         <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 9 }} angle={-35} textAnchor="end" interval={0} />
-                        <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
+                        <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} tickFormatter={v => v === 0 ? 'R$0' : Math.abs(v) >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`} />
                         <Tooltip
                           contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
                           formatter={(v: number) => formatBRL(v)}
@@ -451,51 +604,13 @@ export default function Reports() {
               </div>
             </section>
 
-            {/* Cash Flow Projection */}
-            <section>
-              <h2 className="text-lg font-display font-semibold text-foreground mb-4 flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-info" /> Projeção de Fluxo de Caixa
-              </h2>
-              <div className="bg-card border border-border rounded-xl p-6 shadow-card">
-                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                  <p className="text-sm text-muted-foreground">Histórico do mês selecionado + projeção mês seguinte baseada na média diária</p>
-                  <div className="flex gap-3 text-xs">
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded bg-chart-1 inline-block" /> Vendas</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-1 rounded bg-chart-4 inline-block" /> Custos</span>
-                    <span className="flex items-center gap-1.5 text-muted-foreground"><span className="w-3 h-1 rounded border border-dashed border-chart-3 inline-block" /> Projeção</span>
-                  </div>
-                </div>
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={projectionData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
-                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip
-                      contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
-                      formatter={(v: number) => formatBRL(v)}
-                    />
-                    <Line dataKey="vendas" name="Vendas" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} connectNulls={false} />
-                    <Line dataKey="custos" name="Custos" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} connectNulls={false} />
-                    <Line dataKey="projecao" name="Projeção" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={false} strokeDasharray="6 3" connectNulls={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-                <div className="mt-4 p-3 bg-muted border border-border rounded-lg text-xs text-foreground flex gap-4 flex-wrap">
-                  <span><span className="font-semibold">Média Diária:</span> {formatBRL(avgDailySales)}</span>
-                  <span><span className="font-semibold">Projeção Mês Seguinte:</span> {formatBRL(avgDailySales * 30)}</span>
-                  <span className={`font-semibold ${curMonth.lucro >= 0 ? 'text-success' : 'text-danger'}`}>
-                    Lucro Líquido Mês: {formatBRL(curMonth.lucro)} ({curMonth.margem}%)
-                  </span>
-                </div>
-              </div>
-            </section>
-
             {/* ===== LUCRATIVIDADE POR PRODUTO ===== */}
             <section>
               <h2 className="text-lg font-display font-semibold text-foreground mb-1 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-warning" /> Lucratividade por Produto
+                <Trophy className="w-5 h-5 text-warning" /> Lucratividade por Produto (Período Selecionado)
               </h2>
               <p className="text-muted-foreground text-sm mb-4">
-                Receita, custo e lucro real por produto — período selecionado
+                Receita, custo do produto e lucro real — filtrado pelo período selecionado
               </p>
 
               {/* Summary KPIs */}
@@ -534,11 +649,8 @@ export default function Reports() {
                       </thead>
                       <tbody>
                         {profitByProduct.map((p, i) => (
-                          <motion.tr
+                          <tr
                             key={p.product_id ?? p.product_name}
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.02 }}
                             className="border-b border-border/50 hover:bg-muted/20 transition-colors"
                           >
                             <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{String(i + 1).padStart(2, '0')}</td>
@@ -565,7 +677,7 @@ export default function Reports() {
                                 {p.margin.toFixed(1)}%
                               </span>
                             </td>
-                          </motion.tr>
+                          </tr>
                         ))}
                       </tbody>
                       <tfoot>

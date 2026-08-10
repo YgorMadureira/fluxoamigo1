@@ -277,30 +277,42 @@ export default function Sales() {
     }
 
     for (const item of validItems) {
+      const prod = products.find(p => p.id === item.product_id || p.name.toLowerCase().trim() === item.product_name.toLowerCase().trim());
+      const productId = item.product_id || prod?.id || null;
+
       const payload = {
-        product_id: item.product_id || null, product_name: item.product_name,
-        quantity: Number(item.quantity), unit_price: parseFloat(item.unit_price) || 0,
+        product_id: productId,
+        product_name: item.product_name,
+        quantity: Number(item.quantity),
+        unit_price: parseFloat(item.unit_price) || 0,
         total_amount: parseFloat(item.total_amount) || 0,
-        sale_date: multiDate, source: multiSource,
+        sale_date: multiDate,
+        source: multiSource,
         notes: multiNotes || null,
         shopee_order_id: sharedOrderId,
-        status: multiStatus, user_id: user?.id ?? null,
+        status: multiStatus,
+        user_id: user?.id ?? null,
         company_id: profile?.company_id ?? '',
         seller_name: sellerName,
-        category_id: item.category_id || null,
+        category_id: item.category_id || prod?.category_id || null,
       };
+
       const { data: inserted, error } = await supabase.from('sales').insert(payload as never).select('id');
       if (!error) {
         successCount++;
-        const prod = products.find(p => p.id === item.product_id);
-        if (item.product_id && prod) {
-          const newQty = Math.max(0, prod.stock_quantity - Number(item.quantity));
+        if (prod) {
+          const currentQty = prod.stock_quantity ?? 0;
+          const newQty = Math.max(0, currentQty - Number(item.quantity));
           const minStock = prod.min_stock ?? 5;
           await Promise.all([
-            supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', item.product_id),
+            supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', prod.id),
             supabase.from('inventory_logs').insert({
-              product_id: item.product_id, user_id: user?.id ?? null, type: 'sale',
-              quantity_change: -Number(item.quantity), quantity_before: prod.stock_quantity, quantity_after: newQty,
+              product_id: prod.id,
+              user_id: user?.id ?? null,
+              type: 'sale',
+              quantity_change: -Number(item.quantity),
+              quantity_before: currentQty,
+              quantity_after: newQty,
               justification: `Venda #${sharedOrderId} registrada — Origem: ${multiSource === 'shopee' ? 'Shopee' : 'Manual'}`,
               user_name: sellerName,
               reference_id: sharedOrderId,
@@ -326,7 +338,9 @@ export default function Sales() {
     e.preventDefault();
     setSubmitting(true);
 
-    const prod = products.find(p => p.id === form.product_id);
+    const prod = products.find(p => p.id === form.product_id || p.name.toLowerCase().trim() === form.product_name.toLowerCase().trim());
+    const productId = form.product_id || prod?.id || null;
+
     if (prod && Number(form.quantity) > prod.stock_quantity) {
       const proceed = window.confirm(
         `Atenção: Estoque disponível é ${prod.stock_quantity} un., mas você está vendendo ${form.quantity}. Deseja continuar mesmo assim?`
@@ -344,7 +358,7 @@ export default function Sales() {
     }
 
     const payload = {
-      product_id: form.product_id || null,
+      product_id: productId,
       product_name: form.product_name,
       quantity: Number(form.quantity),
       unit_price: parseFloat(form.unit_price),
@@ -357,7 +371,7 @@ export default function Sales() {
       user_id: user?.id ?? null,
       company_id: profile?.company_id ?? '',
       seller_name: sellerName,
-      category_id: form.category_id || null,
+      category_id: form.category_id || prod?.category_id || null,
     };
 
     let error: { message: string } | null = null;
@@ -368,18 +382,19 @@ export default function Sales() {
       const res = await supabase.from('sales').insert(payload as never).select('id');
       error = res.error as { message: string } | null;
 
-      if (!error && form.product_id && prod) {
-        const newQty = Math.max(0, prod.stock_quantity - Number(form.quantity));
+      if (!error && prod) {
+        const currentQty = prod.stock_quantity ?? 0;
+        const newQty = Math.max(0, currentQty - Number(form.quantity));
         const minStock = prod.min_stock ?? 5;
 
         await Promise.all([
-          supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', form.product_id),
+          supabase.from('products').update({ stock_quantity: newQty, updated_at: new Date().toISOString() } as never).eq('id', prod.id),
           supabase.from('inventory_logs').insert({
-            product_id: form.product_id,
+            product_id: prod.id,
             user_id: user?.id ?? null,
             type: 'sale',
             quantity_change: -Number(form.quantity),
-            quantity_before: prod.stock_quantity,
+            quantity_before: currentQty,
             quantity_after: newQty,
             justification: `Venda #${saleCode} registrada — Origem: ${form.source === 'shopee' ? 'Shopee' : 'Manual'}`,
             user_name: sellerName,
@@ -416,7 +431,9 @@ export default function Sales() {
     const sellerName = profile?.full_name ?? user?.email ?? 'Usuário';
 
     for (const sale of salesToDelete) {
-      if (!sale.product_id) continue;
+      const prod = products.find(p => p.id === sale.product_id || p.name.toLowerCase().trim() === sale.product_name.toLowerCase().trim());
+      const productId = sale.product_id || prod?.id;
+      if (!productId) continue;
 
       const saleCode = sale.shopee_order_id || `VEN-${sale.id.slice(0, 6).toUpperCase()}`;
 
@@ -424,34 +441,32 @@ export default function Sales() {
       const { data: prodData } = await supabase
         .from('products')
         .select('stock_quantity')
-        .eq('id', sale.product_id)
+        .eq('id', productId)
         .maybeSingle();
 
-      if (prodData) {
-        const currentStock = prodData.stock_quantity ?? 0;
-        const qtyToRestore = Number(sale.quantity);
-        const restoredStock = currentStock + qtyToRestore;
+      const currentStock = prodData?.stock_quantity ?? prod?.stock_quantity ?? 0;
+      const qtyToRestore = Number(sale.quantity);
+      const restoredStock = currentStock + qtyToRestore;
 
-        await supabase
-          .from('products')
-          .update({ stock_quantity: restoredStock, updated_at: new Date().toISOString() } as never)
-          .eq('id', sale.product_id);
+      await supabase
+        .from('products')
+        .update({ stock_quantity: restoredStock, updated_at: new Date().toISOString() } as never)
+        .eq('id', productId);
 
-        // 2. Registra o estorno como ENTRADA "Venda Cancelada" no histórico com o ID da venda
-        await supabase
-          .from('inventory_logs')
-          .insert({
-            product_id: sale.product_id,
-            user_id: user?.id ?? null,
-            type: 'sale_cancellation',
-            quantity_change: qtyToRestore,
-            quantity_before: currentStock,
-            quantity_after: restoredStock,
-            justification: `Venda #${saleCode} cancelada — ${sale.product_name} (Estorno)`,
-            user_name: sellerName,
-            reference_id: saleCode,
-          } as never);
-      }
+      // 2. Registra o estorno como ENTRADA "Venda Cancelada" no histórico com o ID da venda
+      await supabase
+        .from('inventory_logs')
+        .insert({
+          product_id: productId,
+          user_id: user?.id ?? null,
+          type: 'sale_cancellation',
+          quantity_change: qtyToRestore,
+          quantity_before: currentStock,
+          quantity_after: restoredStock,
+          justification: `Venda #${saleCode} cancelada — ${sale.product_name} (Estorno)`,
+          user_name: sellerName,
+          reference_id: saleCode,
+        } as never);
     }
   };
 

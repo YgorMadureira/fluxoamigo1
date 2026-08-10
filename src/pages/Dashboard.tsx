@@ -39,7 +39,7 @@ const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 export default function Dashboard() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { startDate, endDate, selectedMonth } = useMonthFilter();
   const navigate = useNavigate();
   const [salesTotal, setSalesTotal] = useState(0);
@@ -51,118 +51,150 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile?.company_id) return;
+    let isMounted = true;
+
     async function fetchData() {
-      setLoading(true);
-      const cid = profile!.company_id;
-      const [salesRes, purchasesRes, productsRes, shopeeRes, salesDetailRes, productsDetailRes] = await Promise.all([
-        supabase.from('sales').select('total_amount, sale_date').eq('company_id', cid).gte('sale_date', startDate).lte('sale_date', endDate),
-        supabase.from('purchases').select('total_amount, purchase_date').eq('company_id', cid).gte('purchase_date', startDate).lte('purchase_date', endDate),
-        supabase.from('products').select('id', { count: 'exact', head: true }).eq('company_id', cid),
-        supabase.from('shop_configs').select('partner_id, shop_id').eq('company_id', cid).maybeSingle(),
-        supabase.from('sales').select('id, product_id, product_name, quantity, unit_price, total_amount, source, shopee_order_id').eq('company_id', cid).gte('sale_date', startDate).lte('sale_date', endDate),
-        supabase.from('products').select('id, sku, cost_price').eq('company_id', cid),
-      ]);
-
-      const sales = salesRes.data ?? [];
-      const purchases = purchasesRes.data ?? [];
-
-      setSalesTotal(sales.reduce((s, r) => s + Number(r.total_amount), 0));
-      setPurchasesTotal(purchases.reduce((s, r) => s + Number(r.total_amount), 0));
-      setTotalProducts(productsRes.count ?? 0);
-
-      const sc = (shopeeRes as { data: { partner_id?: string | null; shop_id?: string | null } | null }).data;
-      setShopeeConfigured(!!(sc?.partner_id && sc?.shop_id));
-
-      // Build profit per product
-      const productsMap = new Map<string, { sku: string | null; cost_price: number }>();
-      (productsDetailRes.data ?? []).forEach((p: { id: string; sku: string | null; cost_price: number }) => {
-        productsMap.set(p.id, { sku: p.sku, cost_price: p.cost_price });
-      });
-
-      interface RawSale {
-        id: string;
-        product_id: string | null;
-        product_name: string;
-        quantity: number;
-        unit_price: number;
-        total_amount: number;
-        source: string;
-        shopee_order_id: string | null;
+      if (!profile?.company_id) {
+        if (!authLoading && isMounted) {
+          setLoading(false);
+        }
+        return;
       }
 
-      const orderMap = new Map<string, RawSale[]>();
-      ((salesDetailRes.data as unknown as RawSale[]) ?? []).forEach(s => {
-        const orderKey = s.shopee_order_id || s.id;
-        const list = orderMap.get(orderKey) ?? [];
-        list.push(s);
-        orderMap.set(orderKey, list);
-      });
+      setLoading(true);
+      try {
+        const cid = profile.company_id;
+        const [salesRes, purchasesRes, productsRes, shopeeRes, salesDetailRes, productsDetailRes] = await Promise.all([
+          supabase.from('sales').select('total_amount, sale_date').eq('company_id', cid).gte('sale_date', startDate).lte('sale_date', endDate),
+          supabase.from('purchases').select('total_amount, purchase_date').eq('company_id', cid).gte('purchase_date', startDate).lte('purchase_date', endDate),
+          supabase.from('products').select('id', { count: 'exact', head: true }).eq('company_id', cid),
+          supabase.from('shop_configs').select('partner_id, shop_id').eq('company_id', cid).maybeSingle(),
+          supabase.from('sales').select('id, product_id, product_name, quantity, unit_price, total_amount, source, shopee_order_id').eq('company_id', cid).gte('sale_date', startDate).lte('sale_date', endDate),
+          supabase.from('products').select('id, sku, cost_price').eq('company_id', cid),
+        ]);
 
-      const profitMap = new Map<string, ProductProfit>();
+        if (!isMounted) return;
 
-      orderMap.forEach(orderItems => {
-        const first = orderItems[0];
-        const itemsInput = orderItems.map(it => ({
-          unitPrice: Number(it.unit_price),
-          costPrice: it.product_id ? (productsMap.get(it.product_id)?.cost_price ?? 0) : 0,
-          quantity: Number(it.quantity),
-        }));
+        const sales = salesRes.data ?? [];
+        const purchases = purchasesRes.data ?? [];
 
-        const orderProfit = calcOrderNetProfit(itemsInput, first.source);
+        setSalesTotal(sales.reduce((s, r) => s + Number(r.total_amount || 0), 0));
+        setPurchasesTotal(purchases.reduce((s, r) => s + Number(r.total_amount || 0), 0));
+        setTotalProducts(productsRes.count ?? 0);
 
-        orderItems.forEach(s => {
-          const key = s.product_id ?? s.product_name;
-          const existing = profitMap.get(key) ?? {
-            product_id: s.product_id,
-            product_name: s.product_name,
-            qty: 0,
-            revenue: 0,
-            cost: 0,
-            shopeeCommission: 0,
-            profit: 0,
-            margin: 0,
-            sku: s.product_id ? (productsMap.get(s.product_id)?.sku ?? null) : null,
-          };
+        const sc = (shopeeRes as { data: { partner_id?: string | null; shop_id?: string | null } | null })?.data;
+        setShopeeConfigured(!!(sc?.partner_id && sc?.shop_id));
 
-          const costPrice = s.product_id ? (productsMap.get(s.product_id)?.cost_price ?? 0) : 0;
-          const qty = Number(s.quantity);
-          const revenue = Number(s.total_amount);
-          const itemCost = costPrice * qty;
-
-          const itemPortion = orderProfit.revenue > 0 ? (revenue / orderProfit.revenue) : (1 / orderItems.length);
-          const itemCommission = orderProfit.shopeeCommission * itemPortion;
-
-          existing.qty += qty;
-          existing.revenue += revenue;
-          existing.cost += itemCost;
-          existing.shopeeCommission += itemCommission;
-          existing.profit = existing.revenue - existing.cost - existing.shopeeCommission;
-          existing.margin = existing.revenue > 0 ? (existing.profit / existing.revenue) * 100 : 0;
-
-          profitMap.set(key, existing);
+        // Build profit per product
+        const productsMap = new Map<string, { sku: string | null; cost_price: number }>();
+        (productsDetailRes.data ?? []).forEach((p: { id: string; sku: string | null; cost_price: number }) => {
+          productsMap.set(p.id, { sku: p.sku ?? null, cost_price: Number(p.cost_price || 0) });
         });
-      });
 
-      const sortedProfits = Array.from(profitMap.values()).sort((a, b) => b.profit - a.profit);
-      setProductProfits(sortedProfits);
+        interface RawSale {
+          id: string;
+          product_id: string | null;
+          product_name: string;
+          quantity: number;
+          unit_price: number;
+          total_amount: number;
+          source: string;
+          shopee_order_id: string | null;
+        }
 
-      const start = parseISO(startDate);
-      const end = parseISO(endDate);
-      const allDays = eachDayOfInterval({ start, end });
-      const last7 = allDays.slice(-7);
-      const days = last7.map(d => {
-        const key = format(d, 'yyyy-MM-dd');
-        const label = format(d, 'dd/MM', { locale: ptBR });
-        const vendas = sales.filter(s => s.sale_date === key).reduce((sum, s) => sum + Number(s.total_amount), 0);
-        const compras = purchases.filter(p => p.purchase_date === key).reduce((sum, p) => sum + Number(p.total_amount), 0);
-        return { date: label, vendas, compras };
-      });
-      setChartData(days);
-      setLoading(false);
+        const orderMap = new Map<string, RawSale[]>();
+        ((salesDetailRes.data as unknown as RawSale[]) ?? []).forEach(s => {
+          const orderKey = s.shopee_order_id || s.id;
+          const list = orderMap.get(orderKey) ?? [];
+          list.push(s);
+          orderMap.set(orderKey, list);
+        });
+
+        const profitMap = new Map<string, ProductProfit>();
+
+        orderMap.forEach(orderItems => {
+          const first = orderItems[0];
+          if (!first) return;
+
+          const itemsInput = orderItems.map(it => ({
+            unitPrice: Number(it.unit_price || 0),
+            costPrice: it.product_id ? (productsMap.get(it.product_id)?.cost_price ?? 0) : 0,
+            quantity: Number(it.quantity || 1),
+          }));
+
+          const orderProfit = calcOrderNetProfit(itemsInput, first.source);
+
+          orderItems.forEach(s => {
+            const key = s.product_id ?? s.product_name;
+            const existing = profitMap.get(key) ?? {
+              product_id: s.product_id,
+              product_name: s.product_name,
+              qty: 0,
+              revenue: 0,
+              cost: 0,
+              shopeeCommission: 0,
+              profit: 0,
+              margin: 0,
+              sku: s.product_id ? (productsMap.get(s.product_id)?.sku ?? null) : null,
+            };
+
+            const costPrice = s.product_id ? (productsMap.get(s.product_id)?.cost_price ?? 0) : 0;
+            const qty = Number(s.quantity || 0);
+            const revenue = Number(s.total_amount || 0);
+            const itemCost = costPrice * qty;
+
+            const itemPortion = orderProfit.revenue > 0 ? (revenue / orderProfit.revenue) : (orderItems.length > 0 ? 1 / orderItems.length : 1);
+            const itemCommission = orderProfit.shopeeCommission * itemPortion;
+
+            existing.qty += qty;
+            existing.revenue += revenue;
+            existing.cost += itemCost;
+            existing.shopeeCommission += itemCommission;
+            existing.profit = existing.revenue - existing.cost - existing.shopeeCommission;
+            existing.margin = existing.revenue > 0 ? (existing.profit / existing.revenue) * 100 : 0;
+
+            profitMap.set(key, existing);
+          });
+        });
+
+        const sortedProfits = Array.from(profitMap.values()).sort((a, b) => b.profit - a.profit);
+        setProductProfits(sortedProfits);
+
+        if (startDate && endDate) {
+          try {
+            const start = parseISO(startDate);
+            const end = parseISO(endDate);
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && start <= end) {
+              const allDays = eachDayOfInterval({ start, end });
+              const last7 = allDays.slice(-7);
+              const days = last7.map(d => {
+                const key = format(d, 'yyyy-MM-dd');
+                const label = format(d, 'dd/MM', { locale: ptBR });
+                const vendas = sales.filter(s => s.sale_date === key).reduce((sum, s) => sum + Number(s.total_amount || 0), 0);
+                const compras = purchases.filter(p => p.purchase_date === key).reduce((sum, p) => sum + Number(p.total_amount || 0), 0);
+                return { date: label, vendas, compras };
+              });
+              setChartData(days);
+            }
+          } catch (e) {
+            console.error('[Dashboard] Error calculating chart date interval:', e);
+          }
+        }
+      } catch (err) {
+        console.error('[Dashboard] Error fetching data:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     }
+
     fetchData();
-  }, [startDate, endDate, profile]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [startDate, endDate, profile, authLoading]);
 
   const monthLabel = format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR });
 

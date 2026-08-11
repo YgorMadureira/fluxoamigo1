@@ -301,6 +301,79 @@ export interface Database {
           justification?: string | null
         }
       }
+      consignments: {
+        Row: {
+          id: string
+          company_id: string
+          supplier_id: string
+          product_id: string | null
+          product_name: string
+          sku: string | null
+          quantity: number
+          unit_cost: number
+          received_date: string
+          notes: string | null
+          user_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          supplier_id: string
+          product_id?: string | null
+          product_name: string
+          sku?: string | null
+          quantity: number
+          unit_cost?: number
+          received_date?: string
+          notes?: string | null
+          user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          supplier_id?: string
+          product_id?: string | null
+          product_name?: string
+          sku?: string | null
+          quantity?: number
+          unit_cost?: number
+          received_date?: string
+          notes?: string | null
+          updated_at?: string
+        }
+      }
+      consignment_payments: {
+        Row: {
+          id: string
+          company_id: string
+          consignment_id: string
+          quantity_paid: number
+          amount: number
+          payment_date: string
+          notes: string | null
+          user_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          consignment_id: string
+          quantity_paid: number
+          amount?: number
+          payment_date?: string
+          notes?: string | null
+          user_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          quantity_paid?: number
+          amount?: number
+          payment_date?: string
+          notes?: string | null
+        }
+      }
     }
     Views: Record<never, never>
     Functions: Record<never, never>

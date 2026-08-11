@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import {
   LayoutDashboard, ShoppingCart, ShoppingBag, Package, BarChart3,
-  LogOut, Menu, X, ChevronRight, Settings, Shield, Tag, BoxesIcon, Truck, Calculator
+  LogOut, Menu, X, ChevronRight, Settings, Shield, Tag, BoxesIcon, Truck, Calculator, Handshake
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import logo from '@/assets/logo-osdevs.jpeg';
@@ -19,6 +19,7 @@ const navItems = [
   { to: '/inventory', icon: Package, label: 'Estoque' },
   { to: '/categories', icon: Tag, label: 'Categorias' },
   { to: '/suppliers', icon: Truck, label: 'Fornecedores' },
+  { to: '/consignments', icon: Handshake, label: 'Consignação' },
   { to: '/reports', icon: BarChart3, label: 'Relatórios' },
   { to: '/calculator', icon: Calculator, label: 'Calculadora' },
 ];

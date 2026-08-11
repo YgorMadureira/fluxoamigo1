@@ -18,6 +18,7 @@ import Products from "./pages/Products";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Suppliers from "./pages/Suppliers";
+import Consignments from "./pages/Consignments";
 import ShopeeCalculator from "./pages/ShopeeCalculator";
 import NotFound from "./pages/NotFound";
 import LandingPage from "./pages/LandingPage";
@@ -46,6 +47,7 @@ const App = () => (
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/suppliers" element={<Suppliers />} />
+                <Route path="/consignments" element={<Consignments />} />
                 <Route path="/calculator" element={<ShopeeCalculator />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

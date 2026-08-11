@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Layout from '@/components/Layout';
 import MonthFilterSelect from '@/components/MonthFilterSelect';
 import { useMonthFilter } from '@/hooks/useMonthFilter';
@@ -12,13 +12,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { SearchCombobox } from '@/components/SearchCombobox';
 import {
   Plus, Pencil, Trash2, Search, RefreshCw, ShoppingCart, X, Loader2, Store, AlertTriangle, Package, Tag, ListPlus, ChevronDown, ChevronRight
 } from 'lucide-react';
-import { format, parseISO, startOfMonth } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { parseISO, startOfMonth } from 'date-fns';
 import type { Database } from '@/integrations/supabase/database.types';
 import { calcShopeeCommission, calcNetProfit, calcOrderNetProfit } from '@/lib/shopeeCommission';
+import { todayBR, formatDateBR } from '@/lib/dateBR';
 
 type Sale = Database['public']['Tables']['sales']['Row'];
 interface Product { id: string; name: string; unit_price: number; cost_price: number; stock_quantity: number; category: string | null; category_id: string | null; min_stock: number | null; sku: string | null; }
@@ -40,28 +41,13 @@ interface SaleItem {
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-const formatDateBR = (dateStr?: string | null) => {
-  if (!dateStr) return '—';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return format(parseISO(dateStr + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR });
-  }
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
-    return format(brt, 'dd/MM/yyyy HH:mm', { locale: ptBR });
-  } catch {
-    return dateStr;
-  }
-};
-
 const emptyForm = {
   product_id: '',
   product_name: '',
   quantity: 1,
   unit_price: '',
   total_amount: '',
-  sale_date: format(new Date(), 'yyyy-MM-dd'),
+  sale_date: todayBR(),
   source: 'manual',
   notes: '',
   shopee_order_id: '',
@@ -99,7 +85,7 @@ export default function Sales() {
   // Multi-item mode
   const [multiMode, setMultiMode] = useState(false);
   const [multiItems, setMultiItems] = useState<SaleItem[]>([newSaleItem()]);
-  const [multiDate, setMultiDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [multiDate, setMultiDate] = useState(todayBR());
   const [multiSource, setMultiSource] = useState('manual');
   const [multiStatus, setMultiStatus] = useState('completed');
   const [multiNotes, setMultiNotes] = useState('');
@@ -138,7 +124,7 @@ export default function Sales() {
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
   const openNew = () => {
-    setForm({ ...emptyForm, sale_date: format(new Date(), 'yyyy-MM-dd') });
+    setForm({ ...emptyForm, sale_date: todayBR() });
     setEditingId(null);
     setProductSearch('');
     setMultiMode(false);
@@ -147,7 +133,7 @@ export default function Sales() {
 
   const openNewMulti = () => {
     setMultiItems([newSaleItem()]);
-    setMultiDate(format(new Date(), 'yyyy-MM-dd'));
+    setMultiDate(todayBR());
     setMultiSource('manual');
     setMultiStatus('completed');
     setMultiNotes('');
@@ -921,41 +907,31 @@ export default function Sales() {
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-muted-foreground w-5 shrink-0">{idx + 1}.</span>
-                          <div className="relative flex-1">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                            <Input
+                          <div className="flex-1 min-w-0">
+                            <SearchCombobox
                               value={item.productSearch}
-                              onChange={e => {
-                                updateMultiItem(item.id, { productSearch: e.target.value, product_name: e.target.value, product_id: '', dropdownOpen: true });
-                              }}
-                              onFocus={() => updateMultiItem(item.id, { dropdownOpen: true })}
+                              onValueChange={v => updateMultiItem(item.id, { productSearch: v, product_name: v, product_id: '' })}
+                              open={item.dropdownOpen}
+                              onOpenChange={open => updateMultiItem(item.id, { dropdownOpen: open })}
+                              items={filtProd}
+                              getKey={p => p.id}
+                              onSelect={p => selectMultiProduct(item.id, p)}
                               placeholder="Buscar produto..."
-                              className="pl-7 h-8 text-sm"
+                              inputClassName="h-8 text-sm"
+                              renderItem={p => {
+                                const minStock = p.min_stock ?? 5;
+                                const sc = p.stock_quantity === 0 ? 'text-danger' : p.stock_quantity <= minStock ? 'text-warning' : 'text-success';
+                                return (
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium text-foreground truncate">{p.name}</span>
+                                    <div className="shrink-0 text-right">
+                                      <p className={`text-xs font-bold ${sc}`}>{p.stock_quantity} un.</p>
+                                      <p className="text-xs text-muted-foreground">{formatBRL(p.unit_price)}</p>
+                                    </div>
+                                  </div>
+                                );
+                              }}
                             />
-                            <AnimatePresence>
-                              {item.dropdownOpen && filtProd.length > 0 && (
-                                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                                  className="absolute z-50 w-full mt-0.5 bg-card border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                  {filtProd.map(p => {
-                                    const minStock = p.min_stock ?? 5;
-                                    const sc = p.stock_quantity === 0 ? 'text-danger' : p.stock_quantity <= minStock ? 'text-warning' : 'text-success';
-                                    return (
-                                      <button key={p.id} type="button" onClick={() => selectMultiProduct(item.id, p)}
-                                        className="w-full text-left px-2.5 py-2 hover:bg-muted/50 text-sm border-b border-border/30 last:border-0">
-                                        <div className="flex items-center justify-between gap-2">
-                                          <span className="font-medium text-foreground truncate">{p.name}</span>
-                                          <div className="shrink-0 text-right">
-                                            <p className={`text-xs font-bold ${sc}`}>{p.stock_quantity} un.</p>
-                                            <p className="text-xs text-muted-foreground">{formatBRL(p.unit_price)}</p>
-                                          </div>
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                            {item.dropdownOpen && <button type="button" className="fixed inset-0 z-40" onClick={() => updateMultiItem(item.id, { dropdownOpen: false })} />}
                           </div>
                           <Button type="button" size="sm" variant="ghost" onClick={() => setMultiItems(prev => prev.filter(it => it.id !== item.id))}
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-danger hover:bg-danger/10 shrink-0">
@@ -1056,60 +1032,33 @@ export default function Sales() {
                 {/* Searchable Product Select */}
                 <div className="col-span-2 space-y-1.5">
                   <Label>Produto *</Label>
-                  <div className="relative">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <Input
-                        value={productSearch}
-                        onChange={e => {
-                          setProductSearch(e.target.value);
-                          setForm(f => ({ ...f, product_name: e.target.value, product_id: '' }));
-                          setProductDropdownOpen(true);
-                        }}
-                        onFocus={() => setProductDropdownOpen(true)}
-                        placeholder="Buscar produto cadastrado..."
-                        className="pl-9"
-                        required
-                      />
-                    </div>
-                    <AnimatePresence>
-                      {productDropdownOpen && filteredProducts.length > 0 && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -4 }}
-                          className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-52 overflow-y-auto"
-                        >
-                          {filteredProducts.map(p => {
-                            const minStock = p.min_stock ?? 5;
-                            const stockColor = p.stock_quantity === 0 ? 'text-danger' : p.stock_quantity <= minStock ? 'text-warning' : 'text-success';
-                            return (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => selectProduct(p)}
-                                className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <p className="font-medium text-sm text-foreground truncate">{p.name}</p>
-                                    {p.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {p.sku}</p>}
-                                  </div>
-                                  <div className="shrink-0 text-right">
-                                    <p className={`text-xs font-bold ${stockColor}`}>{p.stock_quantity} un.</p>
-                                    <p className="text-xs text-muted-foreground">{formatBRL(p.unit_price)}</p>
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                    {productDropdownOpen && (
-                      <button type="button" className="fixed inset-0 z-40" onClick={() => setProductDropdownOpen(false)} />
-                    )}
-                  </div>
+                  <SearchCombobox
+                    value={productSearch}
+                    onValueChange={v => { setProductSearch(v); setForm(f => ({ ...f, product_name: v, product_id: '' })); }}
+                    open={productDropdownOpen}
+                    onOpenChange={setProductDropdownOpen}
+                    items={filteredProducts}
+                    getKey={p => p.id}
+                    onSelect={selectProduct}
+                    placeholder="Buscar produto cadastrado..."
+                    required
+                    renderItem={p => {
+                      const minStock = p.min_stock ?? 5;
+                      const stockColor = p.stock_quantity === 0 ? 'text-danger' : p.stock_quantity <= minStock ? 'text-warning' : 'text-success';
+                      return (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm text-foreground truncate">{p.name}</p>
+                            {p.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {p.sku}</p>}
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className={`text-xs font-bold ${stockColor}`}>{p.stock_quantity} un.</p>
+                            <p className="text-xs text-muted-foreground">{formatBRL(p.unit_price)}</p>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
 
                   {/* Selected product info */}
                   {selectedProduct && (

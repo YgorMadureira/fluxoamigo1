@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Layout from '@/components/Layout';
 import MonthFilterSelect from '@/components/MonthFilterSelect';
 import { useMonthFilter } from '@/hooks/useMonthFilter';
@@ -13,15 +13,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { SearchCombobox } from '@/components/SearchCombobox';
 import {
   Plus, Pencil, Trash2, Search, RefreshCw, ShoppingBag, Loader2, Wand2,
   Tag, Package, Info, ScanLine, X, CheckCircle, AlertTriangle,
   ChevronRight, Link, UserPlus, FileText, Scale, Camera, Sparkles, ListPlus, Settings
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Database } from '@/integrations/supabase/database.types';
+import { todayBR, formatDateBR } from '@/lib/dateBR';
 
 
 type Purchase = Database['public']['Tables']['purchases']['Row'];
@@ -141,18 +141,9 @@ function SupplierCombobox({
   );
 }
 
-const formatDateBR = (dateStr: string) => {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return format(parseISO(dateStr + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR });
-  }
-  const d = new Date(dateStr);
-  const brt = new Date(d.getTime() - 3 * 60 * 60 * 1000);
-  return format(brt, 'dd/MM/yyyy HH:mm', { locale: ptBR });
-};
-
 const emptyForm = {
   product_id: '', product_name: '', quantity: 1, unit_cost: '',
-  total_amount: '', purchase_date: format(new Date(), 'yyyy-MM-dd'),
+  total_amount: '', purchase_date: todayBR(),
   supplier: '', category: 'product', notes: '',
 };
 
@@ -218,12 +209,11 @@ export default function Purchases() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Multi-item mode
   const [multiMode, setMultiMode] = useState(false);
   const [multiItems, setMultiItems] = useState<PurchaseItem[]>([newPurchaseItem()]);
-  const [multiDate, setMultiDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [multiDate, setMultiDate] = useState(todayBR());
   const [multiSupplier, setMultiSupplier] = useState('');
   const [multiCategory, setMultiCategory] = useState('product');
   const [multiNotes, setMultiNotes] = useState('');
@@ -302,7 +292,7 @@ export default function Purchases() {
 
   // ===== REGULAR FORM HELPERS =====
   const openNew = () => {
-    setForm({ ...emptyForm, purchase_date: format(new Date(), 'yyyy-MM-dd') });
+    setForm({ ...emptyForm, purchase_date: todayBR() });
     setProductSearch('');
     setEditingId(null);
     setMultiMode(false);
@@ -311,7 +301,7 @@ export default function Purchases() {
 
   const openNewMulti = () => {
     setMultiItems([newPurchaseItem()]);
-    setMultiDate(format(new Date(), 'yyyy-MM-dd'));
+    setMultiDate(todayBR());
     setMultiSupplier('');
     setMultiCategory('product');
     setMultiNotes('');
@@ -550,7 +540,7 @@ export default function Purchases() {
   // ===== OCR SCANNER HELPERS =====
   const openScanner = () => {
     setScanFile(null); setScanPreview(null); setScanResult(null); setScannedItems([]);
-    setScannedSupplier(''); setScannedDate(format(new Date(), 'yyyy-MM-dd'));
+    setScannedSupplier(''); setScannedDate(todayBR());
     setScannerOpen(true);
   };
 
@@ -1233,34 +1223,24 @@ REGRAS:
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-muted-foreground w-5 shrink-0">{idx + 1}.</span>
                           {/* Product search */}
-                          <div className="relative flex-1">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                            <Input
+                          <div className="flex-1 min-w-0">
+                            <SearchCombobox
                               value={item.productSearch}
-                              onChange={e => {
-                                updateMultiItem(item.id, { productSearch: e.target.value, product_name: e.target.value, product_id: '', dropdownOpen: true });
-                              }}
-                              onFocus={() => updateMultiItem(item.id, { dropdownOpen: true })}
+                              onValueChange={v => updateMultiItem(item.id, { productSearch: v, product_name: v, product_id: '' })}
+                              open={item.dropdownOpen}
+                              onOpenChange={open => updateMultiItem(item.id, { dropdownOpen: open })}
+                              items={filtProd}
+                              getKey={p => p.id}
+                              onSelect={p => selectMultiProduct(item.id, p)}
                               placeholder="Buscar produto..."
-                              className="pl-7 h-8 text-sm"
-                            />
-                            <AnimatePresence>
-                              {item.dropdownOpen && filtProd.length > 0 && (
-                                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                                  className="absolute z-50 w-full mt-0.5 bg-card border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                  {filtProd.map(p => (
-                                    <button key={p.id} type="button" onClick={() => selectMultiProduct(item.id, p)}
-                                      className="w-full text-left px-2.5 py-2 hover:bg-muted/50 text-sm border-b border-border/30 last:border-0">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="font-medium text-foreground truncate">{p.name}</span>
-                                        <span className="text-xs text-muted-foreground shrink-0">{formatBRL(p.cost_price)}</span>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </motion.div>
+                              inputClassName="h-8 text-sm"
+                              renderItem={p => (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium text-foreground truncate">{p.name}</span>
+                                  <span className="text-xs text-muted-foreground shrink-0">{formatBRL(p.cost_price)}</span>
+                                </div>
                               )}
-                            </AnimatePresence>
-                            {item.dropdownOpen && <button type="button" className="fixed inset-0 z-40" onClick={() => updateMultiItem(item.id, { dropdownOpen: false })} />}
+                            />
                           </div>
                           <Button type="button" size="sm" variant="ghost" onClick={() => setMultiItems(prev => prev.filter(it => it.id !== item.id))}
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-danger hover:bg-danger/10 shrink-0">
@@ -1324,42 +1304,33 @@ REGRAS:
                     <Plus className="w-3 h-3" /> Produto Novo
                   </Button>
                 </div>
-                <div className="relative" ref={dropdownRef}>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <Input value={productSearch}
-                      onChange={e => { setProductSearch(e.target.value); setForm(f => ({ ...f, product_name: e.target.value, product_id: '' })); setProductDropdownOpen(true); }}
-                      onFocus={() => setProductDropdownOpen(true)}
-                      placeholder="Buscar produto existente..." className="pl-9" required />
-                  </div>
-                  <AnimatePresence>
-                    {productDropdownOpen && filteredProducts.length > 0 && (
-                      <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                        className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-52 overflow-y-auto">
-                        {filteredProducts.map(p => {
-                          const minStock = p.min_stock ?? 5;
-                          const stockColor = p.stock_quantity === 0 ? 'text-danger' : p.stock_quantity <= minStock ? 'text-warning' : 'text-success';
-                          return (
-                            <button key={p.id} type="button" onClick={() => selectProduct(p)}
-                              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="font-medium text-sm text-foreground truncate">{p.name}</p>
-                                  {p.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {p.sku}</p>}
-                                </div>
-                                <div className="shrink-0 text-right">
-                                  <p className={`text-xs font-bold ${stockColor}`}>{p.stock_quantity} un.</p>
-                                  <p className="text-xs text-muted-foreground">{formatBRL(p.cost_price)}</p>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  {productDropdownOpen && <button type="button" className="fixed inset-0 z-40" onClick={() => setProductDropdownOpen(false)} />}
-                </div>
+                <SearchCombobox
+                  value={productSearch}
+                  onValueChange={v => { setProductSearch(v); setForm(f => ({ ...f, product_name: v, product_id: '' })); }}
+                  open={productDropdownOpen}
+                  onOpenChange={setProductDropdownOpen}
+                  items={filteredProducts}
+                  getKey={p => p.id}
+                  onSelect={selectProduct}
+                  placeholder="Buscar produto existente..."
+                  required
+                  renderItem={p => {
+                    const minStock = p.min_stock ?? 5;
+                    const stockColor = p.stock_quantity === 0 ? 'text-danger' : p.stock_quantity <= minStock ? 'text-warning' : 'text-success';
+                    return (
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm text-foreground truncate">{p.name}</p>
+                          {p.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {p.sku}</p>}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className={`text-xs font-bold ${stockColor}`}>{p.stock_quantity} un.</p>
+                          <p className="text-xs text-muted-foreground">{formatBRL(p.cost_price)}</p>
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
                 {selectedProduct && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
                     className="rounded-lg border border-border bg-muted/30 p-2.5 space-y-1.5">

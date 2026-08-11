@@ -333,7 +333,7 @@ export default function Products() {
                         >
                           <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{String(i + 1).padStart(2, '0')}</td>
                           <td className="px-4 py-3">
-                            <div className="font-semibold text-foreground max-w-[180px] truncate">{p.name}</div>
+                            <div className="font-semibold text-foreground max-w-[260px] whitespace-normal break-words">{p.name}</div>
                           </td>
                           <td className="px-4 py-3">
                             {p.sku

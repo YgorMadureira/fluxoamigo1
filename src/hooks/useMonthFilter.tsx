@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { nowInBR } from '@/lib/dateBR';
 
 interface MonthFilterContextValue {
   selectedMonth: Date;
@@ -12,7 +13,7 @@ interface MonthFilterContextValue {
 const MonthFilterContext = createContext<MonthFilterContextValue | null>(null);
 
 export function MonthFilterProvider({ children }: { children: ReactNode }) {
-  const [selectedMonth, setSelectedMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const [selectedMonth, setSelectedMonth] = useState<Date>(() => startOfMonth(nowInBR()));
 
   const startDate = format(startOfMonth(selectedMonth), 'yyyy-MM-dd');
   const endDate = format(endOfMonth(selectedMonth), 'yyyy-MM-dd');

@@ -10,8 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, RefreshCw, History, Loader2, Package, TrendingUp, TrendingDown, SlidersHorizontal, Lock, ArrowLeft, DollarSign, AlertTriangle, ArrowDownRight, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { formatDateTimeBR } from '@/lib/dateBR';
 
 interface LogRow {
   id: string;
@@ -332,12 +331,12 @@ export default function InventoryHistory() {
                         className="border-b border-border/50 hover:bg-muted/30 transition-colors"
                       >
                         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">
-                          {format(new Date(l.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                          {formatDateTimeBR(l.created_at)}
                         </td>
-                        <td className="px-4 py-3 font-medium text-foreground max-w-[160px] truncate">
+                        <td className="px-4 py-3 font-medium text-foreground max-w-[220px]">
                           <div className="flex items-center gap-1.5">
                             <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                            {l.product_name}
+                            <span className="whitespace-normal break-words">{l.product_name}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -374,7 +373,7 @@ export default function InventoryHistory() {
                             <span className="text-xs text-muted-foreground italic">Sem custo</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs max-w-[200px] truncate" title={l.justification ?? ''}>
+                        <td className="px-4 py-3 text-muted-foreground text-xs max-w-[280px] whitespace-normal break-words">
                           {l.justification ?? <span className="opacity-40 italic">Sem justificativa</span>}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">

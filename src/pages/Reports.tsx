@@ -11,6 +11,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, parseISO, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { nowInBR } from '@/lib/dateBR';
 
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -54,8 +55,8 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
 
   // Filters: Year and Month
-  const [selectedYear, setSelectedYear] = useState<string>(() => String(new Date().getFullYear()));
-  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>(() => String(new Date().getMonth() + 1));
+  const [selectedYear, setSelectedYear] = useState<string>(() => String(nowInBR().getFullYear()));
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>(() => String(nowInBR().getMonth() + 1));
 
   useEffect(() => {
     let isMounted = true;

@@ -6,6 +6,7 @@ import { ptBR } from 'date-fns/locale';
 import { CalendarDays } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { nowInBR } from '@/lib/dateBR';
 
 export default function MonthFilterSelect() {
   const { selectedMonth, setSelectedMonth } = useMonthFilter();
@@ -24,7 +25,7 @@ export default function MonthFilterSelect() {
 
       const monthSet = new Set<string>();
       // Always include current month
-      monthSet.add(format(new Date(), 'yyyy-MM'));
+      monthSet.add(format(nowInBR(), 'yyyy-MM'));
 
       (salesRes.data ?? []).forEach((s: { sale_date: string }) => {
         if (s.sale_date) monthSet.add(s.sale_date.slice(0, 7));

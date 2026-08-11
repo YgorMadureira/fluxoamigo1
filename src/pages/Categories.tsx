@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Search, RefreshCw, Tag, Loader2 } from 'lucide-react';
+import { formatDateBR } from '@/lib/dateBR';
 
 interface Category {
   id: string;
@@ -177,7 +178,7 @@ export default function Categories() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {new Date(c.created_at).toLocaleDateString('pt-BR')}
+                        {formatDateBR(c.created_at)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">

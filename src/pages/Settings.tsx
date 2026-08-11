@@ -15,8 +15,7 @@ import {
   Sparkles, Key, CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { formatDateBR } from '@/lib/dateBR';
 
 interface CompanyData {
   id: string;
@@ -257,7 +256,7 @@ export default function Settings() {
                       <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
                       <span className="text-foreground font-medium text-sm">
                         {company?.created_at
-                          ? format(new Date(company.created_at), "dd/MM/yyyy", { locale: ptBR })
+                          ? formatDateBR(company.created_at)
                           : '—'}
                       </span>
                     </div>

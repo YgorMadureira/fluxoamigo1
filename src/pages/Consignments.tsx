@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Layout from '@/components/Layout';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -11,15 +11,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { SearchCombobox } from '@/components/SearchCombobox';
 import {
-  Handshake, Plus, Search, X, Loader2, Package, FileDown, CircleDollarSign,
+  Handshake, Plus, X, Loader2, Package, FileDown, CircleDollarSign,
   ListPlus, RefreshCw, Truck, Filter,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Database } from '@/integrations/supabase/database.types';
+import { todayBR, formatDateBR, formatDateTimeBR } from '@/lib/dateBR';
 
 type ConsignmentRow = Database['public']['Tables']['consignments']['Row'];
 type PaymentRow = Database['public']['Tables']['consignment_payments']['Row'];
@@ -49,14 +49,6 @@ interface EntryItem {
 const formatBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-const formatDateBR = (dateStr: string | null) => {
-  if (!dateStr) return '—';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return format(parseISO(dateStr + 'T00:00:00'), 'dd/MM/yyyy', { locale: ptBR });
-  }
-  return dateStr;
-};
-
 const newEntryItem = (): EntryItem => ({
   id: Math.random().toString(36).slice(2),
   product_id: '', product_name: '', sku: '', quantity: 1, unit_cost: '',
@@ -83,7 +75,7 @@ export default function Consignments() {
   // New entry dialog
   const [entryDialogOpen, setEntryDialogOpen] = useState(false);
   const [entrySupplierId, setEntrySupplierId] = useState('');
-  const [entryDate, setEntryDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [entryDate, setEntryDate] = useState(todayBR());
   const [entryNotes, setEntryNotes] = useState('');
   const [entryItems, setEntryItems] = useState<EntryItem[]>([newEntryItem()]);
   const [entrySubmitting, setEntrySubmitting] = useState(false);
@@ -92,7 +84,7 @@ export default function Consignments() {
   const [payingRow, setPayingRow] = useState<EnrichedConsignment | null>(null);
   const [payQty, setPayQty] = useState('1');
   const [payAmount, setPayAmount] = useState('');
-  const [payDate, setPayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [payDate, setPayDate] = useState(todayBR());
   const [payNotes, setPayNotes] = useState('');
   const [paySubmitting, setPaySubmitting] = useState(false);
 
@@ -165,7 +157,7 @@ export default function Consignments() {
   // ===== NEW ENTRY DIALOG =====
   const openEntryDialog = () => {
     setEntrySupplierId(selectedSupplierId !== 'all' ? selectedSupplierId : '');
-    setEntryDate(format(new Date(), 'yyyy-MM-dd'));
+    setEntryDate(todayBR());
     setEntryNotes('');
     setEntryItems([newEntryItem()]);
     setEntryDialogOpen(true);
@@ -261,7 +253,7 @@ export default function Consignments() {
     setPayingRow(row);
     setPayQty(String(row.pendingQty));
     setPayAmount(row.pendingAmount.toFixed(2));
-    setPayDate(format(new Date(), 'yyyy-MM-dd'));
+    setPayDate(todayBR());
     setPayNotes('');
   };
 
@@ -341,7 +333,7 @@ export default function Consignments() {
       doc.setFont('helvetica', 'normal');
       doc.text(`Empresa: ${profile?.company_name ?? '-'}`, marginX, y); y += 5;
       doc.text(`Fornecedor: ${supplier.name}`, marginX, y); y += 5;
-      doc.text(`Data de geração: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: ptBR })}`, marginX, y); y += 8;
+      doc.text(`Data de geração: ${formatDateTimeBR(new Date().toISOString())}`, marginX, y); y += 8;
 
       doc.setFont('helvetica', 'bold');
       doc.text('Resumo', marginX, y); y += 6;
@@ -391,7 +383,7 @@ export default function Consignments() {
         headStyles: { fillColor: [22, 163, 74] },
       });
 
-      const filename = `consignacao-${supplier.name.toLowerCase().replace(/\s+/g, '-')}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+      const filename = `consignacao-${supplier.name.toLowerCase().replace(/\s+/g, '-')}-${todayBR()}.pdf`;
       doc.save(filename);
     } finally {
       setGeneratingPdf(false);
@@ -638,32 +630,25 @@ export default function Consignments() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono text-muted-foreground w-5 shrink-0">{idx + 1}.</span>
-                        <div className="relative flex-1">
-                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-                          <Input
+                        <div className="flex-1 min-w-0">
+                          <SearchCombobox
                             value={item.productSearch}
-                            onChange={e => updateEntryItem(item.id, { productSearch: e.target.value, product_id: '', product_name: '', dropdownOpen: true })}
-                            onFocus={() => updateEntryItem(item.id, { dropdownOpen: true })}
+                            onValueChange={v => updateEntryItem(item.id, { productSearch: v, product_id: '', product_name: '' })}
+                            open={item.dropdownOpen}
+                            onOpenChange={open => updateEntryItem(item.id, { dropdownOpen: open })}
+                            items={filtProd}
+                            getKey={p => p.id}
+                            onSelect={p => selectEntryProduct(item.id, p)}
                             placeholder="Buscar produto cadastrado..."
-                            className="pl-7 h-8 text-sm"
-                          />
-                          <AnimatePresence>
-                            {item.dropdownOpen && filtProd.length > 0 && (
-                              <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                                className="absolute z-50 w-full mt-0.5 bg-card border border-border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                {filtProd.map(p => (
-                                  <button key={p.id} type="button" onClick={() => selectEntryProduct(item.id, p)}
-                                    className="w-full text-left px-2.5 py-2 hover:bg-muted/50 text-sm border-b border-border/30 last:border-0">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="font-medium text-foreground truncate">{p.name}</span>
-                                      <span className="text-xs text-muted-foreground shrink-0">{formatBRL(p.cost_price)}</span>
-                                    </div>
-                                  </button>
-                                ))}
-                              </motion.div>
+                            inputClassName="h-8 text-sm"
+                            emptyMessage="Nenhum produto encontrado"
+                            renderItem={p => (
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-foreground truncate">{p.name}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">{formatBRL(p.cost_price)}</span>
+                              </div>
                             )}
-                          </AnimatePresence>
-                          {item.dropdownOpen && <button type="button" className="fixed inset-0 z-40" onClick={() => updateEntryItem(item.id, { dropdownOpen: false })} />}
+                          />
                         </div>
                         <Button type="button" size="sm" variant="ghost" onClick={() => setEntryItems(prev => prev.filter(it => it.id !== item.id))}
                           className="h-8 w-8 p-0 text-muted-foreground hover:text-danger hover:bg-danger/10 shrink-0">

@@ -154,12 +154,14 @@ export default function Settings() {
       return;
     }
     setTestingConnection(true);
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 800));
     setTestingConnection(false);
+    // Nota: isto valida apenas se os campos foram preenchidos — não há chamada
+    // real à API da Shopee para confirmar que as credenciais são válidas.
     if (shopConfig.partner_id && shopConfig.partner_key && shopConfig.shop_id) {
-      toast.success('Credenciais válidas! Conexão com Shopee estabelecida.');
+      toast.success('Credenciais preenchidas corretamente.');
     } else {
-      toast.error('Falha na conexão. Verifique as credenciais.');
+      toast.error('Preencha Partner ID, Partner Key e Shop ID.');
     }
   };
 
@@ -402,7 +404,7 @@ export default function Settings() {
                         ? <Wifi className="w-4 h-4 text-success" />
                         : <WifiOff className="w-4 h-4" />
                     }
-                    Testar Conexão
+                    Verificar Preenchimento
                   </Button>
                 </div>
               </div>

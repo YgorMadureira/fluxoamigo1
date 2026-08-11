@@ -21,6 +21,7 @@ interface LogRow {
   quantity_before: number;
   quantity_after: number;
   justification: string | null;
+  reference_id: string | null;
   user_name: string | null;
   user_id: string | null;
   created_at: string;

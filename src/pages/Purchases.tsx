@@ -383,6 +383,9 @@ export default function Purchases() {
     }
     setMultiSubmitting(true);
     let successCount = 0;
+    // Running stock per product, so repeated lines of the same product in this
+    // submission accumulate instead of each overwriting the others' result.
+    const stockMap = new Map(products.map(p => [p.id, p.stock_quantity ?? 0]));
     for (const item of validItems) {
       const payload = {
         product_id: item.product_id || null, product_name: item.product_name,
@@ -397,8 +400,9 @@ export default function Purchases() {
         successCount++;
         if (item.product_id) {
           const prod = products.find(p => p.id === item.product_id);
-          const prevQty = prod?.stock_quantity ?? 0;
+          const prevQty = stockMap.get(item.product_id) ?? prod?.stock_quantity ?? 0;
           const newQty = prevQty + Number(item.quantity);
+          stockMap.set(item.product_id, newQty);
           const unitCostValue = parseFloat(item.unit_cost) || 0;
           await Promise.all([
             supabase.from('products').update({ stock_quantity: newQty, cost_price: unitCostValue, updated_at: new Date().toISOString() } as never).eq('id', item.product_id),
@@ -702,6 +706,9 @@ REGRAS:
     }
     setBatchSubmitting(true);
     let successCount = 0;
+    // Running stock per product, so repeated lines of the same product in this
+    // import accumulate instead of each overwriting the others' result.
+    const stockMap = new Map(products.map(p => [p.id, p.stock_quantity ?? 0]));
     for (const item of toImport) {
       const productId = item.matched_product_id;
       const productName = item.matched_product_name || item.description;
@@ -718,8 +725,9 @@ REGRAS:
         successCount++;
         if (productId) {
           const prod = products.find(p => p.id === productId);
-          const prevQty = prod?.stock_quantity ?? 0;
+          const prevQty = stockMap.get(productId) ?? prod?.stock_quantity ?? 0;
           const newQty = prevQty + item.quantity;
+          stockMap.set(productId, newQty);
           await Promise.all([
             supabase.from('products').update({ stock_quantity: newQty, cost_price: item.unit_price, updated_at: new Date().toISOString() } as never).eq('id', productId),
             supabase.from('inventory_logs').insert({

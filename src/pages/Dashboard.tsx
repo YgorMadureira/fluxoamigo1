@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { calcNetProfit } from '@/lib/shopeeCommission';
+import { calcOrderNetProfit } from '@/lib/shopeeCommission';
 
 interface KpiCard {
   title: string;

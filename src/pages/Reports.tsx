@@ -112,6 +112,62 @@ export default function Reports() {
     return null;
   };
 
+  // Year/month combinations that actually have sales or purchases data
+  const dataYearMonths = useMemo(() => {
+    const set = new Set<string>();
+    sales.forEach(s => {
+      if (!s.sale_date) return;
+      const d = parseISO(s.sale_date);
+      if (isNaN(d.getTime())) return;
+      set.add(`${d.getFullYear()}-${d.getMonth() + 1}`);
+    });
+    purchases.forEach(p => {
+      if (!p.purchase_date) return;
+      const d = parseISO(p.purchase_date);
+      if (isNaN(d.getTime())) return;
+      set.add(`${d.getFullYear()}-${d.getMonth() + 1}`);
+    });
+    return set;
+  }, [sales, purchases]);
+
+  // Only years that have at least one sale or purchase
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    dataYearMonths.forEach(key => years.add(Number(key.split('-')[0])));
+    return Array.from(years).sort((a, b) => b - a);
+  }, [dataYearMonths]);
+
+  // Only months (for the selected year, or across all years when "all") that have data
+  const availableMonths = useMemo(() => {
+    const months = new Set<number>();
+    dataYearMonths.forEach(key => {
+      const [y, m] = key.split('-').map(Number);
+      if (selectedYear === 'all' || y === Number(selectedYear)) months.add(m);
+    });
+    return Array.from(months).sort((a, b) => a - b);
+  }, [dataYearMonths, selectedYear]);
+
+  // Keep filters pointing at real data: fall back once loading finishes and the current
+  // selection no longer matches any existing sale/purchase
+  useEffect(() => {
+    if (loading) return;
+    if (availableYears.length === 0) {
+      if (selectedYear !== 'all') setSelectedYear('all');
+      if (selectedMonthFilter !== 'all') setSelectedMonthFilter('all');
+      return;
+    }
+    if (selectedYear !== 'all' && !availableYears.includes(Number(selectedYear))) {
+      setSelectedYear(String(availableYears[0]));
+    }
+  }, [loading, availableYears, selectedYear]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (selectedMonthFilter !== 'all' && !availableMonths.includes(Number(selectedMonthFilter))) {
+      setSelectedMonthFilter('all');
+    }
+  }, [loading, availableMonths, selectedMonthFilter]);
+
   // Filter sales and purchases according to Year and Month filters
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
@@ -311,8 +367,6 @@ export default function Reports() {
     return Array.from(catMap.entries()).map(([name, value]) => ({ name, value }));
   }, [filteredPurchases]);
 
-  const yearOptions = ['all', '2026', '2025', '2024', '2023'];
-
   return (
     <Layout>
       <div className="p-6 lg:p-8 space-y-8">
@@ -331,27 +385,27 @@ export default function Reports() {
               <Filter className="w-3.5 h-3.5 text-primary" /> Período:
             </div>
 
-            {/* Select Ano */}
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
+            {/* Select Ano — só lista anos com vendas ou compras registradas */}
+            <Select value={selectedYear} onValueChange={setSelectedYear} disabled={availableYears.length === 0}>
               <SelectTrigger className="h-8 w-36 text-xs font-medium bg-background border-border">
                 <SelectValue placeholder="Ano" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os anos</SelectItem>
-                <SelectItem value="2026">2026</SelectItem>
-                <SelectItem value="2025">2025</SelectItem>
-                <SelectItem value="2024">2024</SelectItem>
-                <SelectItem value="2023">2023</SelectItem>
+                {availableYears.map(y => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
-            {/* Select Mês */}
-            <Select value={selectedMonthFilter} onValueChange={setSelectedMonthFilter}>
+            {/* Select Mês — só lista meses com vendas ou compras registradas */}
+            <Select value={selectedMonthFilter} onValueChange={setSelectedMonthFilter} disabled={availableMonths.length === 0}>
               <SelectTrigger className="h-8 w-40 text-xs font-medium bg-background border-border">
                 <SelectValue placeholder="Mês" />
               </SelectTrigger>
               <SelectContent>
-                {MONTH_NAMES.map(m => (
+                <SelectItem value="all">Todos os meses</SelectItem>
+                {MONTH_NAMES.filter(m => m.value !== 'all' && availableMonths.includes(Number(m.value))).map(m => (
                   <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                 ))}
               </SelectContent>

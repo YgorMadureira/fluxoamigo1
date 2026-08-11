@@ -276,6 +276,10 @@ export default function Sales() {
       sharedOrderId = await generateNextSaleCode();
     }
 
+    // Running stock per product, so repeated lines of the same product in this
+    // submission accumulate instead of each overwriting the others' result.
+    const stockMap = new Map(products.map(p => [p.id, p.stock_quantity ?? 0]));
+
     for (const item of validItems) {
       const prod = products.find(p => p.id === item.product_id || p.name.toLowerCase().trim() === item.product_name.toLowerCase().trim());
       const productId = item.product_id || prod?.id || null;
@@ -301,8 +305,9 @@ export default function Sales() {
       if (!error) {
         successCount++;
         if (prod) {
-          const currentQty = prod.stock_quantity ?? 0;
+          const currentQty = stockMap.get(prod.id) ?? prod.stock_quantity ?? 0;
           const newQty = Math.max(0, currentQty - Number(item.quantity));
+          stockMap.set(prod.id, newQty);
           const minStock = prod.min_stock ?? 5;
 
           // Update stock

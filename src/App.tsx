@@ -21,7 +21,6 @@ import Suppliers from "./pages/Suppliers";
 import ShopeeCalculator from "./pages/ShopeeCalculator";
 import NotFound from "./pages/NotFound";
 import LandingPage from "./pages/LandingPage";
-import LandingPage from "./pages/LandingPage";
 
 const queryClient = new QueryClient();
 
